@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tower Defence</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="game-wrapper">
+    <div id="hud">
+      <span>Gold: <strong id="gold">0</strong></span>
+      <span>Lives: <strong id="lives">0</strong></span>
+      <span>Wave: <strong id="wave">1</strong></span>
+    </div>
+    <canvas id="game" width="1024" height="640"></canvas>
+    <p class="hint">Нажмите «+» на жёлтой клетке, чтобы купить башню (50 gold)</p>
+  </div>
+
+  <div id="purchase-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" role="dialog" aria-labelledby="purchase-title">
+      <h2 id="purchase-title">Купить башню?</h2>
+      <p class="modal-cost">С вашего счёта спишется <strong>50</strong> золота.</p>
+      <p class="modal-balance">У вас: <strong id="modal-gold">0</strong> золота</p>
+      <p id="modal-error" class="modal-error hidden"></p>
+      <div class="modal-buttons">
+        <button type="button" id="purchase-confirm">Купить</button>
+        <button type="button" id="purchase-cancel">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
