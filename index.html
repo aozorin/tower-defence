@@ -14,7 +14,7 @@
       <span>Wave: <strong id="wave">1</strong></span>
     </div>
     <canvas id="game" width="1024" height="640"></canvas>
-    <p class="hint">«+» — купить башню · клик по зелёному танку — радиус и прокачка</p>
+    <p class="hint">«+» — выбор башни · клик по башне — радиус и прокачка</p>
   </div>
 
   <div id="upgrade-modal" class="modal hidden" aria-hidden="true">
@@ -34,13 +34,12 @@
 
   <div id="purchase-modal" class="modal hidden" aria-hidden="true">
     <div class="modal-backdrop"></div>
-    <div class="modal-content" role="dialog" aria-labelledby="purchase-title">
-      <h2 id="purchase-title">Купить башню?</h2>
-      <p class="modal-cost">С вашего счёта спишется <strong>50</strong> золота.</p>
+    <div class="modal-content modal-content-wide" role="dialog" aria-labelledby="purchase-title">
+      <h2 id="purchase-title">Выберите башню</h2>
       <p class="modal-balance">У вас: <strong id="modal-gold">0</strong> золота</p>
+      <div class="tower-shop" id="tower-shop"></div>
       <p id="modal-error" class="modal-error hidden"></p>
       <div class="modal-buttons">
-        <button type="button" id="purchase-confirm">Купить</button>
         <button type="button" id="purchase-cancel">Отмена</button>
       </div>
     </div>
