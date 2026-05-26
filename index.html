@@ -14,7 +14,22 @@
       <span>Wave: <strong id="wave">1</strong></span>
     </div>
     <canvas id="game" width="1024" height="640"></canvas>
-    <p class="hint">Нажмите «+» на жёлтой клетке, чтобы купить башню (50 gold)</p>
+    <p class="hint">«+» — купить башню · клик по зелёному танку — радиус и прокачка</p>
+  </div>
+
+  <div id="upgrade-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-content-wide" role="dialog" aria-labelledby="upgrade-title">
+      <h2 id="upgrade-title">Прокачка башни</h2>
+      <p class="modal-level">Уровень: <strong id="upgrade-level">1</strong> / 3</p>
+      <div class="upgrade-bullets" id="upgrade-bullets-preview"></div>
+      <p class="modal-balance">У вас: <strong id="upgrade-modal-gold">0</strong> золота</p>
+      <p id="upgrade-error" class="modal-error hidden"></p>
+      <div class="modal-buttons">
+        <button type="button" id="upgrade-confirm">Улучшить</button>
+        <button type="button" id="upgrade-close">Закрыть</button>
+      </div>
+    </div>
   </div>
 
   <div id="purchase-modal" class="modal hidden" aria-hidden="true">

@@ -119,6 +119,8 @@ const ASSET_KEYS = [
   'tank_red',
   'tank_green',
   'bulletGreen1',
+  'bulletGreen1_outline',
+  'bulletGreen3_outline',
   'explosionSmoke1',
   'explosionSmoke2',
   'explosionSmoke3',
@@ -288,12 +290,13 @@ class Projectile {
   static SPEED = 280;
   static HIT_RADIUS = 12;
 
-  constructor(x, y, target, damage, game) {
+  constructor(x, y, target, damage, game, bulletKey) {
     this.x = x;
     this.y = y;
     this.target = target;
     this.damage = damage;
     this.game = game;
+    this.bulletKey = bulletKey;
     this.hit = false;
   }
 
@@ -323,9 +326,10 @@ class Projectile {
   draw(ctx, images) {
     if (this.hit) return;
 
-    const img = images.bulletGreen1;
-    const w = img.width * ASSET_SCALE * 2;
-    const h = img.height * ASSET_SCALE * 2;
+    const img = images[this.bulletKey];
+    const scale = this.bulletKey === 'bulletGreen3_outline' ? 2.2 : 2;
+    const w = img.width * ASSET_SCALE * scale;
+    const h = img.height * ASSET_SCALE * scale;
     ctx.drawImage(img, this.x - w / 2, this.y - h / 2, w, h);
   }
 }
@@ -333,8 +337,16 @@ class Projectile {
 class Tower {
   static COST = 50;
   static RANGE = 120;
-  static DAMAGE = 10;
   static FIRE_COOLDOWN = 0.6;
+
+  static BULLETS = {
+    1: 'bulletGreen1',
+    2: 'bulletGreen1_outline',
+    3: 'bulletGreen3_outline',
+  };
+
+  static DAMAGE = { 1: 10, 2: 16, 3: 26 };
+  static UPGRADE_COST = { 2: 60, 3: 120 };
 
   constructor(col, row, game) {
     this.col = col;
@@ -345,6 +357,46 @@ class Tower {
     this.y = center.y;
     this.cooldown = 0;
     this.angle = 0;
+    this.level = 1;
+  }
+
+  getDamage() {
+    return Tower.DAMAGE[this.level];
+  }
+
+  getBulletKey() {
+    return Tower.BULLETS[this.level];
+  }
+
+  getUpgradeCost() {
+    if (this.level >= 3) return null;
+    return Tower.UPGRADE_COST[this.level + 1];
+  }
+
+  canUpgrade() {
+    return this.level < 3;
+  }
+
+  upgrade() {
+    if (!this.canUpgrade()) return false;
+    this.level++;
+    return true;
+  }
+
+  containsPoint(x, y) {
+    return Math.hypot(x - this.x, y - this.y) <= TILE_SIZE / 2;
+  }
+
+  drawRange(ctx) {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, Tower.RANGE, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(46, 204, 113, 0.14)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(46, 204, 113, 0.75)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   update(dt) {
@@ -359,7 +411,14 @@ class Tower {
     if (!target) return;
 
     this.game.projectiles.push(
-      new Projectile(this.x, this.y, target, Tower.DAMAGE, this.game)
+      new Projectile(
+        this.x,
+        this.y,
+        target,
+        this.getDamage(),
+        this.game,
+        this.getBulletKey()
+      )
     );
     this.cooldown = Tower.FIRE_COOLDOWN;
   }
@@ -403,16 +462,25 @@ class Game {
     this.lives = 10;
     this.wave = 1;
     this.enemiesSpawned = 0;
-    this.enemiesPerWave = 8;
+    this.enemiesPerWave = 0;
     this.spawnTimer = 0;
     this.spawnInterval = 2.5;
     this.waveActive = false;
     this.gameOver = false;
+    this.selectedTower = null;
 
     this.lastTime = 0;
     this.hintMessage = '';
     this.hintTimer = 0;
     this.pendingPurchase = null;
+
+    this.upgradeModal = document.getElementById('upgrade-modal');
+    this.upgradeLevelEl = document.getElementById('upgrade-level');
+    this.upgradeGoldEl = document.getElementById('upgrade-modal-gold');
+    this.upgradeErrorEl = document.getElementById('upgrade-error');
+    this.upgradeBulletsEl = document.getElementById('upgrade-bullets-preview');
+    this.upgradeConfirmBtn = document.getElementById('upgrade-confirm');
+    this.upgradeCloseBtn = document.getElementById('upgrade-close');
 
     this.modal = document.getElementById('purchase-modal');
     this.modalGoldEl = document.getElementById('modal-gold');
@@ -425,6 +493,11 @@ class Game {
     this.purchaseCancelBtn.addEventListener('click', () => this.closePurchaseModal());
     this.modal.querySelector('.modal-backdrop').addEventListener('click', () =>
       this.closePurchaseModal()
+    );
+    this.upgradeConfirmBtn.addEventListener('click', () => this.confirmUpgrade());
+    this.upgradeCloseBtn.addEventListener('click', () => this.closeUpgradeModal());
+    this.upgradeModal.querySelector('.modal-backdrop').addEventListener('click', () =>
+      this.closeUpgradeModal()
     );
 
     this.loadAssets().then(() => {
@@ -445,7 +518,16 @@ class Game {
     this.images = Object.fromEntries(entries);
   }
 
+  getWaveConfig() {
+    const enemiesPerWave = 6 + this.wave * 3;
+    const spawnInterval = Math.max(0.65, 2.4 - this.wave * 0.18);
+    return { enemiesPerWave, spawnInterval };
+  }
+
   startWave() {
+    const config = this.getWaveConfig();
+    this.enemiesPerWave = config.enemiesPerWave;
+    this.spawnInterval = config.spawnInterval;
     this.waveActive = true;
     this.enemiesSpawned = 0;
     this.spawnTimer = 0;
@@ -474,6 +556,94 @@ class Game {
     return this.towers.some((t) => t.col === col && t.row === row);
   }
 
+  getTowerAt(x, y) {
+    for (const tower of this.towers) {
+      if (tower.containsPoint(x, y)) return tower;
+    }
+    return null;
+  }
+
+  selectTower(tower) {
+    this.selectedTower = tower;
+    this.closePurchaseModal();
+  }
+
+  deselectTower() {
+    this.selectedTower = null;
+  }
+
+  openUpgradeModal(tower) {
+    this.selectTower(tower);
+    this.upgradeLevelEl.textContent = tower.level;
+    this.upgradeGoldEl.textContent = this.gold;
+    this.upgradeErrorEl.classList.add('hidden');
+    this.upgradeErrorEl.textContent = '';
+    this.renderUpgradePreview(tower);
+
+    const cost = tower.getUpgradeCost();
+    if (!tower.canUpgrade()) {
+      this.upgradeConfirmBtn.textContent = 'Макс. уровень';
+      this.upgradeConfirmBtn.disabled = true;
+    } else {
+      this.upgradeConfirmBtn.textContent = `Улучшить (${cost} gold)`;
+      this.upgradeConfirmBtn.disabled = this.gold < cost;
+      if (this.gold < cost) {
+        this.upgradeErrorEl.textContent = 'Недостаточно золота';
+        this.upgradeErrorEl.classList.remove('hidden');
+      }
+    }
+
+    this.upgradeModal.classList.remove('hidden');
+    this.upgradeModal.setAttribute('aria-hidden', 'false');
+  }
+
+  renderUpgradePreview(tower) {
+    const labels = { 1: 'Ур. 1', 2: 'Ур. 2', 3: 'Ур. 3' };
+    this.upgradeBulletsEl.innerHTML = '';
+
+    for (let lvl = 1; lvl <= 3; lvl++) {
+      const key = Tower.BULLETS[lvl];
+      const slot = document.createElement('div');
+      slot.className = 'bullet-slot';
+      if (lvl < tower.level) slot.classList.add('unlocked');
+      if (lvl === tower.level) slot.classList.add('active');
+
+      const img = document.createElement('img');
+      img.src = ASSET_BASE + `${key}.png`;
+      img.alt = labels[lvl];
+
+      const label = document.createElement('span');
+      label.textContent = labels[lvl];
+
+      slot.appendChild(img);
+      slot.appendChild(label);
+      this.upgradeBulletsEl.appendChild(slot);
+    }
+  }
+
+  closeUpgradeModal() {
+    this.upgradeModal.classList.add('hidden');
+    this.upgradeModal.setAttribute('aria-hidden', 'true');
+  }
+
+  confirmUpgrade() {
+    const tower = this.selectedTower;
+    if (!tower || !tower.canUpgrade() || this.gameOver) return;
+
+    const cost = tower.getUpgradeCost();
+    if (this.gold < cost) {
+      this.upgradeErrorEl.textContent = 'Недостаточно золота';
+      this.upgradeErrorEl.classList.remove('hidden');
+      this.upgradeConfirmBtn.disabled = true;
+      return;
+    }
+
+    this.gold -= cost;
+    tower.upgrade();
+    this.updateHud();
+    this.openUpgradeModal(tower);
+  }
+
   getPlusAt(x, y) {
     for (const slot of BUILD_SLOTS) {
       if (this.hasTowerAt(slot.col, slot.row)) continue;
@@ -488,6 +658,8 @@ class Game {
   }
 
   openPurchaseModal(slot) {
+    this.deselectTower();
+    this.closeUpgradeModal();
     this.pendingPurchase = { col: slot.col, row: slot.row };
     this.modalGoldEl.textContent = this.gold;
     this.modalErrorEl.classList.add('hidden');
@@ -537,11 +709,20 @@ class Game {
     if (this.gameOver) return;
 
     const { x, y } = this.canvasToGameCoords(e.clientX, e.clientY);
+    const tower = this.getTowerAt(x, y);
+
+    if (tower) {
+      this.openUpgradeModal(tower);
+      return;
+    }
+
+    this.deselectTower();
+    this.closeUpgradeModal();
+
     const slot = this.getPlusAt(x, y);
-
-    if (!slot) return;
-
-    this.openPurchaseModal(slot);
+    if (slot) {
+      this.openPurchaseModal(slot);
+    }
   }
 
   drawBuildSlots() {
@@ -654,6 +835,10 @@ class Game {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.drawMap();
     this.drawBuildSlots();
+
+    if (this.selectedTower) {
+      this.selectedTower.drawRange(ctx);
+    }
 
     for (const tower of this.towers) {
       tower.draw(ctx, images);
