@@ -1324,6 +1324,7 @@ class Game {
     this.pathSpawnPlan = new Array(PATHS.length).fill(0);
     this.pathSpawnRemaining = new Array(PATHS.length).fill(0);
     this.pathFirstSpawned = new Array(PATHS.length).fill(false);
+    this.pathIndicatorMinTimer = new Array(PATHS.length).fill(0);
 
     this.lastTime = 0;
     this.hintMessage = '';
@@ -1841,9 +1842,9 @@ class Game {
 
   getPathThreatLevel(remainingCount) {
     if (remainingCount <= 0) return null;
-    if (remainingCount <= 4) return { label: 'МАЛО', color: '#2ecc71' };
-    if (remainingCount <= 8) return { label: 'СРЕДНЕ', color: '#f39c12' };
-    return { label: 'МНОГО', color: '#e74c3c' };
+    if (remainingCount <= 4) return { color: '#2ecc71' };
+    if (remainingCount <= 8) return { color: '#f39c12' };
+    return { color: '#e74c3c' };
   }
 
   startWave() {
@@ -1858,6 +1859,7 @@ class Game {
     this.pathSpawnPlan = this.generatePathSpawnPlan(this.enemiesPerWave);
     this.pathSpawnRemaining = [...this.pathSpawnPlan];
     this.pathFirstSpawned = new Array(PATHS.length).fill(false);
+    this.pathIndicatorMinTimer = new Array(PATHS.length).fill(5);
     this.bossSpawnSchedule = this.generateBossSpawnSchedule();
     this.showWaveBanner(`В0ЛНА ${this.wave}`);
     this.spawnDueBosses();
@@ -2234,6 +2236,13 @@ class Game {
   update(dt) {
     if (!this.started || this.gameOver || this.isPaused) return;
 
+    const realDt = dt / Math.max(1, this.gameSpeed);
+    for (let i = 0; i < this.pathIndicatorMinTimer.length; i++) {
+      if (this.pathIndicatorMinTimer[i] > 0) {
+        this.pathIndicatorMinTimer[i] = Math.max(0, this.pathIndicatorMinTimer[i] - realDt);
+      }
+    }
+
     if (this.hintTimer > 0) {
       this.hintTimer -= dt;
       if (this.hintTimer <= 0) {
@@ -2349,13 +2358,13 @@ class Game {
     ctx.strokeStyle = '#b8e8ff';
     ctx.lineWidth = 3;
     ctx.strokeRect(baseCenter.x - baseW / 2, baseCenter.y - baseH / 2, baseW, baseH);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = '#000';
     ctx.font = '20px "Pixelify Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('БАЗА', baseCenter.x, baseCenter.y + 7);
 
     for (let i = 0; i < PATHS.length; i++) {
-      if (this.pathFirstSpawned[i]) continue;
+      if (this.pathFirstSpawned[i] && this.pathIndicatorMinTimer[i] <= 0) continue;
       const threat = this.getPathThreatLevel(this.pathSpawnRemaining[i]);
       if (!threat) continue;
       const start = PATHS[i][0];
@@ -2366,17 +2375,11 @@ class Game {
 
       ctx.beginPath();
       ctx.arc(center.x, markerY, 16, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(5, 8, 20, 0.8)';
+      ctx.fillStyle = threat.color;
       ctx.fill();
-      ctx.strokeStyle = threat.color;
+      ctx.strokeStyle = '#000';
       ctx.lineWidth = 2;
       ctx.stroke();
-
-      ctx.fillStyle = threat.color;
-      ctx.font = 'bold 11px "Pixelify Sans", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(threat.label, center.x, markerY + 1);
     }
   }
 

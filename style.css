@@ -4,8 +4,8 @@
 
 @font-face {
   font-family: 'Pixelify Sans';
-  src: url('assets/fonts/Pixelify_Sans/PixelifySans-VariableFont_wght.ttf') format('truetype');
-  font-weight: 100 900;
+  src: url('assets/fonts/Pixelify_Sans/static/PixelifySans-Regular.ttf') format('truetype');
+  font-weight: 400;
   font-style: normal;
 }
 
@@ -16,7 +16,7 @@ body {
   overflow: hidden;
   background: #090b1f;
   font-family: 'Pixelify Sans', system-ui, sans-serif;
-  color: #eee;
+  color: #000;
 }
 
 #game-root {
@@ -42,8 +42,8 @@ body {
   gap: 8px;
   min-width: 120px;
   padding: 8px 12px;
-  color: #ecf7ff;
-  background: url('assets/kenney_ui-pack-space-expansion/PNG/Blue/Default/bar_square_gloss_small_square.png')
+  color: #000;
+  background: url('assets/kenney_ui-pack-space-expansion/PNG/Blue/Default/bar_round_gloss_large.png')
     center / 100% 100% no-repeat;
 }
 
@@ -64,7 +64,7 @@ body {
   width: 44px;
   height: 44px;
   cursor: pointer;
-  color: #fff;
+  color: #000;
   background: url('assets/kenney_ui-pack-space-expansion/PNG/Blue/Default/button_square_header_small_square.png')
     center / 100% 100% no-repeat;
 }
@@ -96,7 +96,7 @@ body {
   z-index: 35;
   padding: 10px 16px;
   font-size: 20px;
-  color: #fff;
+  color: #000;
   background: rgba(4, 7, 20, 0.86);
   border: 2px solid #59bfff;
 }
@@ -113,7 +113,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: clamp(36px, 8vw, 80px);
-  color: #fff;
+  color: #000;
   text-shadow: 0 4px 0 #1e2860;
   background: rgba(8, 10, 24, 0.45);
   pointer-events: none;
@@ -136,7 +136,7 @@ body {
   overflow: auto;
   padding: 28px;
   text-align: center;
-  color: #fff;
+  color: #000;
   background: url('assets/kenney_ui-pack-space-expansion/PNG/Blue/Default/button_square_header_large_rectangle_screws.png')
     center / 100% 100% no-repeat;
 }
@@ -157,7 +157,7 @@ body {
   margin: 6px;
   padding: 10px 14px;
   border: 0;
-  color: #fff;
+  color: #000;
   cursor: pointer;
   font-size: 24px;
   font-family: inherit;
@@ -209,7 +209,7 @@ body {
   border-radius: 10px;
   padding: 7px 10px;
   font-size: 14px;
-  color: #eaf2ff;
+  color: #000;
   background: rgba(255, 255, 255, 0.12);
   cursor: pointer;
 }
@@ -221,14 +221,14 @@ body {
 .shop-tree-title {
   grid-column: 1 / -1;
   font-size: 13px;
-  color: #b9dcff;
+  color: #000;
   margin: 6px 0 2px;
 }
 
 .shop-item {
   min-height: 76px;
   padding: 10px;
-  color: #ecf7ff;
+  color: #000;
   background: rgba(5, 13, 35, 0.72);
   border: 2px solid rgba(89, 191, 255, 0.72);
 }
@@ -284,7 +284,7 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  color: #fff;
+  color: #000;
   gap: 2px;
   transform-origin: center;
   background: url('assets/kenney_ui-pack-space-expansion/PNG/Blue/Default/bar_round_gloss_large_square.png')
