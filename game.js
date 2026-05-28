@@ -326,6 +326,7 @@ class BarrelMine {
     this.splashRadius = splashRadius;
     this.ttl = ttl;
     this.spent = false;
+    this.rotation = Math.random() * Math.PI * 2;
   }
 
   update(dt, game) {
@@ -365,7 +366,7 @@ class BarrelMine {
     const img = images.barrelBlack_side;
     const w = img.width * ASSET_SCALE * 1.25;
     const h = img.height * ASSET_SCALE * 1.25;
-    drawRotatedSprite(ctx, img, this.x, this.y, w, h, 0);
+    drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.rotation);
   }
 }
 
@@ -722,22 +723,23 @@ class Tower {
 
     this.cooldown -= dt;
     if (this.cooldown > 0) return;
-    if (!target) return;
-
-    const dmg = this.getDamage();
-    const splash = this.getSplashRadius();
 
     if (this.type === 'barrel') {
-      const col = Math.floor(target.x / TILE_SIZE);
-      const row = Math.floor(target.y / TILE_SIZE);
-      if (isRoad(col, row)) {
-        const spot = cellCenter(col, row);
-        this.game.mines.push(new BarrelMine(spot.x, spot.y, dmg, splash));
+      const point = this.getRandomRoadCellInRange();
+      if (point) {
+        const spot = cellCenter(point.col, point.row);
+        this.game.mines.push(
+          new BarrelMine(spot.x, spot.y, this.getDamage(), this.getSplashRadius())
+        );
       }
       this.cooldown = cooldown;
       return;
     }
 
+    if (!target) return;
+
+    const dmg = this.getDamage();
+    const splash = this.getSplashRadius();
     const projKey = this.getProjectileKey();
     const speed = this.config.projectileSpeed;
 
@@ -774,6 +776,19 @@ class Tower {
     }
 
     return nearest;
+  }
+
+  getRandomRoadCellInRange() {
+    const candidates = [];
+    for (const waypoint of PATH_WAYPOINTS) {
+      const center = cellCenter(waypoint.col, waypoint.row);
+      const dist = Math.hypot(center.x - this.x, center.y - this.y);
+      if (dist <= this.getRange()) {
+        candidates.push(waypoint);
+      }
+    }
+    if (candidates.length === 0) return null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
   draw(ctx, images) {
