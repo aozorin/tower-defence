@@ -49,6 +49,10 @@ function cellCenter(col, row) {
   };
 }
 
+function isBaseCell(col, row) {
+  return col === BASE_COL && row === BASE_ROW;
+}
+
 function angleFromDirection(dx, dy) {
   return Math.atan2(dy, dx) - TANK_SPRITE_FACING;
 }
@@ -954,6 +958,7 @@ class Tower {
     const candidates = [];
     for (const path of PATHS) {
       for (const waypoint of path) {
+        if (isBaseCell(waypoint.col, waypoint.row)) continue;
         const center = cellCenter(waypoint.col, waypoint.row);
         const dist = Math.hypot(center.x - this.x, center.y - this.y);
         if (dist <= this.getRange()) {
@@ -1016,20 +1021,14 @@ class Tower {
     const w = img.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
     const h = img.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
-    const rankImg = images[`silver${Math.min(3, this.level)}`];
+    const rankKey = this.berserkLevel > 0
+      ? `gold${Math.min(3, this.berserkLevel)}`
+      : `silver${Math.min(3, this.level)}`;
+    const rankImg = images[rankKey];
     if (rankImg) {
       const rw = TILE_SIZE * 0.5;
       const rh = rw * (rankImg.height / rankImg.width);
       ctx.drawImage(rankImg, this.x - rw / 2, this.y - h * 0.55 - rh, rw, rh);
-    }
-    if (this.berserkLevel > 0) {
-      const key = `gold${Math.min(3, this.berserkLevel)}`;
-      const br = images[key];
-      if (br) {
-        const rw = br.width * 0.55;
-        const rh = br.height * 0.55;
-        ctx.drawImage(br, this.x + w * 0.2, this.y - h * 0.55 - rh * 0.8, rw, rh);
-      }
     }
     this.drawHudBars(ctx);
   }
@@ -1131,7 +1130,7 @@ class Game {
         const key = `${col},${row}`;
         if (isRoad(col, row)) continue;
         if (BUILD_SLOT_SET.has(key)) continue;
-        if (col === BASE_COL && row === BASE_ROW) continue;
+        if (isBaseCell(col, row)) continue;
         if (Math.random() > DECORATION_SPAWN_CHANCE) continue;
 
         const decorationKey = this.availableDecorationKeys[
