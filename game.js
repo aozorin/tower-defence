@@ -1372,6 +1372,15 @@ class Game {
     return Tower.MAX_BARREL_MINES + (this.hasProgressEffect('barrelStockpile') ? 10 : 0);
   }
 
+  syncStartPreviewStats() {
+    if (this.started) return;
+    this.wave = this.progress.selectedStartWave;
+    this.highestWaveThisRun = this.wave;
+    this.gold = this.getStartingGold();
+    this.lives = this.getStartingLives();
+    this.updateHud();
+  }
+
   updateProgressUi() {
     const maxStartWave = getMaxStartWave(this.progress);
     if (this.progress.selectedStartWave > maxStartWave) {
@@ -1384,6 +1393,7 @@ class Game {
     this.speedBtn.textContent = `x${this.gameSpeed}`;
     this.speedBtn.disabled = getMaxGameSpeed(this.progress) <= 1;
     this.renderProgressShop();
+    this.syncStartPreviewStats();
   }
 
   changeStartWave(delta) {
@@ -2073,6 +2083,7 @@ class Game {
     this.gold = this.getStartingGold();
     this.lives = this.getStartingLives();
     this.runRewarded = false;
+    this.updateHud();
     this.started = true;
     this.mainMenu.classList.add('hidden');
     if (this.decorations.length === 0) {
