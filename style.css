@@ -97,8 +97,8 @@ body {
   padding: 10px 16px;
   font-size: 20px;
   color: #000;
-  background: rgba(4, 7, 20, 0.86);
-  border: 2px solid #59bfff;
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid #000;
 }
 
 .hidden {
