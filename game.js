@@ -261,6 +261,12 @@ function loadProgress() {
   }
 }
 
+function formatPercentChange(before, after) {
+  const pct = ((after / before) - 1) * 100;
+  const sign = pct >= 0 ? '+' : '';
+  return `${sign}${Math.round(pct)}%`;
+}
+
 function saveProgress(progress) {
   localStorage.setItem(PROGRESSION_STORAGE_KEY, JSON.stringify(progress));
 }
@@ -1572,10 +1578,30 @@ class Game {
       };
       for (const [stat, title] of Object.entries(statTitles)) {
         const level = this.progress.stats[stat];
+        let detailText = 'Максимум';
+        if (level < STAT_MAX_LEVELS[stat]) {
+          if (stat === 'damage') {
+            const before = 0.72 + level * 0.09;
+            const after = 0.72 + (level + 1) * 0.09;
+            detailText = `множитель ${before.toFixed(2)} -> ${after.toFixed(2)} (${formatPercentChange(before, after)})`;
+          } else if (stat === 'range') {
+            const before = 0.9 + level * 0.06;
+            const after = 0.9 + (level + 1) * 0.06;
+            detailText = `множитель ${before.toFixed(2)} -> ${after.toFixed(2)} (${formatPercentChange(before, after)})`;
+          } else if (stat === 'economy') {
+            const before = 90 + level * 45;
+            const after = 90 + (level + 1) * 45;
+            detailText = `${before} -> ${after}`;
+          } else if (stat === 'lives') {
+            const before = 10 + level * 5;
+            const after = 10 + (level + 1) * 5;
+            detailText = `${before} -> ${after}`;
+          }
+        }
         add(
           `stat-${stat}`,
           `${title} ${level}/${STAT_MAX_LEVELS[stat]}`,
-          'Базовый узел',
+          detailText,
           STAT_COSTS[stat][level],
           level >= STAT_MAX_LEVELS[stat],
           () => { this.progress.stats[stat]++; },
@@ -1590,7 +1616,7 @@ class Game {
       add(
         'berserk',
         'Берсерк',
-        'Ветка ярости для танка',
+        'Открывает уровни берсерка (урон x4..x8, двойной выстрел)',
         BERSERK_UNLOCK_COST,
         this.progress.berserkUnlocked,
         () => { this.progress.berserkUnlocked = true; },
@@ -1601,7 +1627,7 @@ class Game {
       add(
         'speed',
         `Ускорение x${GAME_SPEED_OPTIONS[nextSpeedLevel] || GAME_SPEED_OPTIONS.at(-1)}`,
-        'Ускорить игру',
+        `скорость ${GAME_SPEED_OPTIONS[this.progress.speedLevel]}x -> ${GAME_SPEED_OPTIONS[nextSpeedLevel] || GAME_SPEED_OPTIONS.at(-1)}x`,
         SPEED_LEVEL_COSTS[this.progress.speedLevel],
         this.progress.speedLevel >= SPEED_LEVEL_COSTS.length,
         () => { this.progress.speedLevel++; },
@@ -1612,7 +1638,7 @@ class Game {
       add(
         'start-wave',
         `Старт с ${START_WAVE_OPTIONS[nextStartWaveLevel] || START_WAVE_OPTIONS.at(-1)}`,
-        'Начало с высокой волны',
+        `волна ${START_WAVE_OPTIONS[this.progress.startWaveLevel]} -> ${START_WAVE_OPTIONS[nextStartWaveLevel] || START_WAVE_OPTIONS.at(-1)}`,
         START_WAVE_COSTS[this.progress.startWaveLevel],
         this.progress.startWaveLevel >= START_WAVE_COSTS.length,
         () => {
@@ -1629,33 +1655,33 @@ class Game {
       add('effect-cannon', 'Удар ядра', 'Сплэш-урон', EFFECT_COSTS.cannonImpact,
         this.progress.effects.cannonImpact, () => { this.progress.effects.cannonImpact = true; },
         this.progress.towerMaxLevel.cannon < 3, 'Танк');
-      add('effect-cannon-pierce', 'Тяжелое ядро', 'Больше урона и радиус', EFFECT_COSTS.cannonPierce,
+      add('effect-cannon-pierce', 'Тяжелое ядро', 'радиус сплэша 34 -> 48, доп. +10% к урону', EFFECT_COSTS.cannonPierce,
         this.progress.effects.cannonPierce, () => { this.progress.effects.cannonPierce = true; },
         !this.progress.effects.cannonImpact, 'Танк');
       return items;
     }
 
     if (tab === 'dart') {
-      add('effect-dart', 'Перегрев', 'Скорость и урон', EFFECT_COSTS.dartOvercharge,
+      add('effect-dart', 'Перегрев', 'КД -15%, доп. +8% к урону', EFFECT_COSTS.dartOvercharge,
         this.progress.effects.dartOvercharge, () => { this.progress.effects.dartOvercharge = true; },
         !this.progress.unlockedTowers.dart, 'Дротики');
-      add('effect-dart-poison', 'Ядовитые дротики', 'Урон со временем', EFFECT_COSTS.dartPoison,
+      add('effect-dart-poison', 'Ядовитые дротики', 'яд: 2.5 сек, 25% от выстрела в сек.', EFFECT_COSTS.dartPoison,
         this.progress.effects.dartPoison, () => { this.progress.effects.dartPoison = true; },
         !this.progress.effects.dartOvercharge, 'Дротики');
-      add('effect-dart-slow', 'Ледяные дротики', 'Замедление врагов', EFFECT_COSTS.dartSlow,
+      add('effect-dart-slow', 'Ледяные дротики', 'замедление до 68% скорости на 1.6 сек', EFFECT_COSTS.dartSlow,
         this.progress.effects.dartSlow, () => { this.progress.effects.dartSlow = true; },
         !this.progress.effects.dartPoison, 'Дротики');
       return items;
     }
 
     if (tab === 'barrel') {
-      add('effect-barrel', 'Склад бомб', '+10 мин и радиус', EFFECT_COSTS.barrelStockpile,
+      add('effect-barrel', 'Склад бомб', 'лимит +10 мин, радиус +8, КД -10%', EFFECT_COSTS.barrelStockpile,
         this.progress.effects.barrelStockpile, () => { this.progress.effects.barrelStockpile = true; },
         !this.progress.unlockedTowers.barrel, 'Бочкомет');
-      add('effect-barrel-napalm', 'Напалм', 'Поджог после взрыва', EFFECT_COSTS.barrelNapalm,
+      add('effect-barrel-napalm', 'Напалм', 'дот: 3 сек, 40% от урона в сек.', EFFECT_COSTS.barrelNapalm,
         this.progress.effects.barrelNapalm, () => { this.progress.effects.barrelNapalm = true; },
         !this.progress.effects.barrelStockpile, 'Бочкомет');
-      add('effect-barrel-snare', 'Осколочная сеть', 'Сильное замедление', EFFECT_COSTS.barrelSnare,
+      add('effect-barrel-snare', 'Осколочная сеть', 'замедление до 58% скорости на 1.8 сек', EFFECT_COSTS.barrelSnare,
         this.progress.effects.barrelSnare, () => { this.progress.effects.barrelSnare = true; },
         !this.progress.effects.barrelNapalm, 'Бочкомет');
     }
