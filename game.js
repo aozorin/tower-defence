@@ -1707,26 +1707,50 @@ class Game {
 
   renderProgressShop() {
     this.shopGridEl.innerHTML = '';
-    let lastBranch = '';
-    for (const item of this.getShopItems(this.activeShopTab)) {
-      if (item.branch && item.branch !== lastBranch) {
-        const title = document.createElement('div');
-        title.className = 'shop-tree-title';
-        title.textContent = `Ветка: ${item.branch}`;
-        this.shopGridEl.appendChild(title);
-        lastBranch = item.branch;
+    const items = this.getShopItems(this.activeShopTab);
+    const branchOrder = [];
+    const grouped = new Map();
+    for (const item of items) {
+      const key = item.branch || 'Общее';
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+        branchOrder.push(key);
       }
-      const el = document.createElement('div');
-      el.className = 'shop-item';
-      const state = item.bought ? 'Куплено' : item.blocked ? 'Закрыто' : `${item.cost} жет.`;
-      el.innerHTML = `<strong>${item.title}</strong><span>${item.detail}</span>`;
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = state;
-      button.disabled = item.bought || item.blocked || this.progress.tokens < item.cost;
-      button.addEventListener('click', () => this.spendTokens(item.cost, item.buy));
-      el.appendChild(button);
-      this.shopGridEl.appendChild(el);
+      grouped.get(key).push(item);
+    }
+
+    for (const branchName of branchOrder) {
+      const branchWrap = document.createElement('div');
+      branchWrap.className = 'shop-tree-branch';
+
+      const title = document.createElement('div');
+      title.className = 'shop-tree-title';
+      title.textContent = `Ветка: ${branchName}`;
+      branchWrap.appendChild(title);
+
+      const row = document.createElement('div');
+      row.className = 'shop-tree-row';
+      const branchItems = grouped.get(branchName);
+      branchItems.forEach((item, idx) => {
+        const el = document.createElement('div');
+        el.className = 'shop-item shop-node';
+        const state = item.bought ? 'Куплено' : item.blocked ? 'Закрыто' : `${item.cost} жет.`;
+        el.innerHTML = `<strong>${item.title}</strong><span>${item.detail}</span>`;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = state;
+        button.disabled = item.bought || item.blocked || this.progress.tokens < item.cost;
+        button.addEventListener('click', () => this.spendTokens(item.cost, item.buy));
+        el.appendChild(button);
+        row.appendChild(el);
+        if (idx < branchItems.length - 1) {
+          const link = document.createElement('div');
+          link.className = 'shop-tree-link';
+          row.appendChild(link);
+        }
+      });
+      branchWrap.appendChild(row);
+      this.shopGridEl.appendChild(branchWrap);
     }
   }
 
