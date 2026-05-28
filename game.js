@@ -1344,7 +1344,7 @@ class Game {
         btn.style.transform = `translate(${dx}px, ${dy}px) scale(0.6)`;
       } else if (options.length === 3) {
         const triangleOffsets = [
-          { x: 20, y: -10 },
+          { x: 20, y: -30 },
           { x: 0, y: -30 },
           { x: -20, y: -30 },
         ];
@@ -1643,7 +1643,9 @@ class Game {
       const threat = this.getPathThreatLevel(this.pathSpawnRemaining[i]);
       if (!threat) continue;
       const start = PATHS[i][0];
-      const center = cellCenter(start.col, start.row);
+      const markerCol = start.row === 0 ? start.col - 1 : start.col;
+      const markerRow = start.row === 0 ? start.row + 1 : start.row;
+      const center = cellCenter(markerCol, markerRow);
       const markerY = center.y - TILE_SIZE * 0.8;
 
       ctx.beginPath();
