@@ -231,3 +231,30 @@ body {
   background: #444;
   color: #eee;
 }
+
+#berserk-section hr {
+  border: none;
+  border-top: 1px solid #555;
+  margin: 1rem 0;
+}
+
+#berserk-section h3 {
+  margin: 0 0 0.5rem;
+  color: #e74c3c;
+}
+
+#berserk-confirm {
+  background: #e74c3c;
+  color: #fff;
+  font-weight: 600;
+}
+
+#berserk-confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#berserk-info {
+  margin: 0.5rem 0;
+  color: #e74c3c;
+}

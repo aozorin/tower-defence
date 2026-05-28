@@ -31,16 +31,26 @@ const PATH_WAYPOINTS = [
 const ROAD_CELLS = new Set(PATH_WAYPOINTS.map((p) => `${p.col},${p.row}`));
 
 const BUILD_SLOTS = [
-  { col: 2, row: 3 },
-  { col: 3, row: 3 },
-  { col: 3, row: 6 },
-  { col: 5, row: 6 },
-  { col: 7, row: 6 },
-  { col: 9, row: 6 },
-  { col: 11, row: 8 },
-  { col: 11, row: 4 },
-  { col: 13, row: 4 },
+  { col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 },
+  { col: 3, row: 3 }, { col: 4, row: 3 },
+  { col: 0, row: 5 }, { col: 1, row: 5 }, { col: 2, row: 5 },
+  { col: 3, row: 5 },
+  { col: 5, row: 4 }, { col: 5, row: 5 },
+  { col: 3, row: 6 }, { col: 3, row: 7 },
+  { col: 5, row: 6 }, { col: 6, row: 6 },
+  { col: 7, row: 6 }, { col: 8, row: 6 }, { col: 9, row: 6 },
+  { col: 10, row: 6 }, { col: 11, row: 6 }, { col: 12, row: 6 },
+  { col: 4, row: 8 }, { col: 5, row: 8 }, { col: 6, row: 8 },
+  { col: 7, row: 8 }, { col: 8, row: 8 }, { col: 9, row: 8 },
+  { col: 10, row: 8 }, { col: 11, row: 8 }, { col: 12, row: 8 },
+  { col: 11, row: 5 },
+  { col: 13, row: 5 }, { col: 13, row: 6 },
+  { col: 13, row: 7 },
+  { col: 12, row: 4 }, { col: 13, row: 4 },
+  { col: 14, row: 4 }, { col: 15, row: 4 },
   { col: 14, row: 6 },
+  { col: 15, row: 6 },
+  { col: 11, row: 4 },
 ];
 
 const BUILD_SLOT_SET = new Set(BUILD_SLOTS.map((s) => `${s.col},${s.row}`));
@@ -111,6 +121,8 @@ function loadImage(src) {
 const ENEMY_TYPES = {
   red: { sprite: 'tank_red', speed: 80, hp: 30, gold: 10 },
   blue: { sprite: 'tank_blue', speed: 145, hp: 14, gold: 6 },
+  dark: { sprite: 'tank_dark', speed: 40, hp: 300, gold: 80 },
+  sand: { sprite: 'tank_sand', speed: 65, hp: 40, gold: 18 },
 };
 
 const TOWER_TYPES = {
@@ -130,17 +142,27 @@ const TOWER_TYPES = {
     },
     damage: { 1: 10, 2: 16, 3: 26 },
     upgradeCost: { 2: 60, 3: 120 },
+    berserk: {
+      cost: { 1: 500, 2: 1000, 3: 2000, 4: 4000 },
+      cooldown: 15,
+      duration: 5,
+      damageMultiplier: { 1: 4, 2: 5, 3: 6, 4: 8 },
+      fireCooldownMultiplier: 0.7,
+      projectiles: {
+        1: 'shotThin',
+        2: 'shotLarge',
+        3: 'shotOrange',
+        4: 'shotRed',
+      },
+      bodySprite: 'tank_bigRed',
+    },
   },
   dart: {
     label: 'Дротики',
     cost: 150,
     description: 'Очень быстрая стрельба',
-    shopSprite: 'specialBarrel6',
-    bodyByLevel: {
-      1: 'specialBarrel6',
-      2: 'specialBarrel7',
-      3: 'specialBarrel7_outline',
-    },
+    shopSprite: 'tankBody_bigRed',
+    bodySprite: 'tankBody_bigRed',
     range: 110,
     fireCooldown: 0.12,
     projectileSpeed: 440,
@@ -151,6 +173,24 @@ const TOWER_TYPES = {
     },
     damage: { 1: 5, 2: 8, 3: 13 },
     upgradeCost: { 2: 100, 3: 200 },
+  },
+  barrel: {
+    label: 'Бочкомёт',
+    cost: 120,
+    description: 'Взрывные бочки',
+    shopSprite: 'tankBody_darkLarge_outline',
+    bodySprite: 'tankBody_darkLarge_outline',
+    range: 100,
+    fireCooldown: 1.2,
+    projectileSpeed: 200,
+    splashRadius: { 1: 50, 2: 65, 3: 85 },
+    projectiles: {
+      1: 'barrelBlack_side',
+      2: 'barrelBlack_side',
+      3: 'barrelBlack_side',
+    },
+    damage: { 1: 18, 2: 30, 3: 48 },
+    upgradeCost: { 2: 80, 3: 160 },
   },
 };
 
@@ -164,18 +204,33 @@ const ASSET_KEYS = [
   'tileGrass_roadCornerLR',
   'tank_red',
   'tank_blue',
+  'tank_dark',
+  'tank_sand',
   'tank_green',
+  'tank_bigRed',
+  'tankBody_bigRed',
+  'tankBody_darkLarge_outline',
   'bulletGreen1',
   'bulletGreen1_outline',
   'bulletGreen3_outline',
   'specialBarrel6',
   'specialBarrel7',
   'specialBarrel7_outline',
+  'barrelBlack_side',
   'explosionSmoke1',
   'explosionSmoke2',
   'explosionSmoke3',
   'explosionSmoke4',
   'explosionSmoke5',
+  'explosion1',
+  'explosion2',
+  'explosion3',
+  'explosion4',
+  'explosion5',
+  'shotThin',
+  'shotLarge',
+  'shotOrange',
+  'shotRed',
 ];
 
 class Explosion {
@@ -219,8 +274,53 @@ class Explosion {
   }
 }
 
+class BarrelExplosion {
+  static FRAME_DURATION = 0.1;
+
+  constructor(x, y, images) {
+    this.x = x;
+    this.y = y;
+    this.frames = [
+      images.explosion1,
+      images.explosion2,
+      images.explosion3,
+      images.explosion4,
+      images.explosion5,
+    ];
+    this.frameIndex = 0;
+    this.frameTime = 0;
+    this.finished = false;
+  }
+
+  update(dt) {
+    if (this.finished) return;
+
+    this.frameTime += dt;
+    while (this.frameTime >= BarrelExplosion.FRAME_DURATION && !this.finished) {
+      this.frameTime -= BarrelExplosion.FRAME_DURATION;
+      this.frameIndex++;
+      if (this.frameIndex >= this.frames.length) {
+        this.finished = true;
+      }
+    }
+  }
+
+  draw(ctx) {
+    if (this.finished) return;
+
+    const img = this.frames[this.frameIndex];
+    const scale = 1.4;
+    const w = img.width * ASSET_SCALE * scale;
+    const h = img.height * ASSET_SCALE * scale;
+    ctx.drawImage(img, this.x - w / 2, this.y - h / 2, w, h);
+  }
+}
+
 class Enemy {
-  constructor(game, type = 'red', pathOffset = 0) {
+  static HEAL_RADIUS = 80;
+  static HEAL_AMOUNT = 5;
+
+  constructor(game, type = 'red', pathOffset = 0, wave = 1) {
     const cfg = ENEMY_TYPES[type];
     this.game = game;
     this.type = type;
@@ -228,10 +328,16 @@ class Enemy {
     this.goldReward = cfg.gold;
     this.waypointIndex = 0;
     this.progress = pathOffset;
-    this.hp = cfg.hp;
-    this.maxHp = cfg.hp;
+    let hp = cfg.hp;
+    hp = Math.round(hp * (1 + (wave - 1) * 0.12));
+    if (type === 'dark') {
+      hp += Math.max(0, (wave - 5) * 150);
+    }
+    this.hp = hp;
+    this.maxHp = hp;
     this.alive = true;
     this.reachedEnd = false;
+    this.healTimer = 0;
 
     const start = cellCenter(PATH_WAYPOINTS[0].col, PATH_WAYPOINTS[0].row);
     const next = cellCenter(PATH_WAYPOINTS[1].col, PATH_WAYPOINTS[1].row);
@@ -313,6 +419,21 @@ class Enemy {
 
     this.x = currentFrom.x + (currentTo.x - currentFrom.x) * this.progress;
     this.y = currentFrom.y + (currentTo.y - currentFrom.y) * this.progress;
+
+    if (this.type === 'sand' && this.alive) {
+      this.healTimer += dt;
+      if (this.healTimer >= 1) {
+        this.healTimer -= 1;
+        for (const other of this.game.enemies) {
+          if (other === this || !other.alive) continue;
+          if (other.hp >= other.maxHp) continue;
+          const dist = Math.hypot(other.x - this.x, other.y - this.y);
+          if (dist <= Enemy.HEAL_RADIUS) {
+            other.hp = Math.min(other.maxHp, other.hp + Enemy.HEAL_AMOUNT);
+          }
+        }
+      }
+    }
   }
 
   draw(ctx, images) {
@@ -330,7 +451,8 @@ class Enemy {
       const barY = this.y - h / 2 - 8;
       ctx.fillStyle = '#333';
       ctx.fillRect(barX, barY, barW, barH);
-      ctx.fillStyle = this.type === 'blue' ? '#3498db' : '#e74c3c';
+      const barColors = { blue: '#3498db', dark: '#8e44ad', sand: '#f39c12' };
+      ctx.fillStyle = barColors[this.type] || '#e74c3c';
       ctx.fillRect(barX, barY, barW * (this.hp / this.maxHp), barH);
     }
   }
@@ -339,7 +461,7 @@ class Enemy {
 class Projectile {
   static HIT_RADIUS = 12;
 
-  constructor(x, y, target, damage, game, bulletKey, speed) {
+  constructor(x, y, target, damage, game, bulletKey, speed, splashRadius = 0) {
     this.x = x;
     this.y = y;
     this.target = target;
@@ -348,6 +470,8 @@ class Projectile {
     this.bulletKey = bulletKey;
     this.speed = speed;
     this.hit = false;
+    this.splashRadius = splashRadius;
+    this.flightAngle = 0;
   }
 
   update(dt) {
@@ -363,7 +487,18 @@ class Projectile {
     const dist = Math.hypot(dx, dy);
 
     if (dist < Projectile.HIT_RADIUS) {
-      this.target.takeDamage(this.damage);
+      if (this.splashRadius > 0) {
+        this.game.spawnBarrelExplosion(this.x, this.y);
+        for (const enemy of this.game.enemies) {
+          if (!enemy.alive) continue;
+          const eDist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+          if (eDist <= this.splashRadius) {
+            enemy.takeDamage(this.damage);
+          }
+        }
+      } else {
+        this.target.takeDamage(this.damage);
+      }
       this.hit = true;
       return;
     }
@@ -379,11 +514,12 @@ class Projectile {
 
     const img = images[this.bulletKey];
     const isDart = this.bulletKey.startsWith('specialBarrel');
-    const scale = isDart ? 1.6 : this.bulletKey === 'bulletGreen3_outline' ? 2.2 : 2;
+    const isBarrel = this.bulletKey === 'barrelBlack_side';
+    const scale = isDart ? 1.6 : isBarrel ? 1.2 : this.bulletKey === 'bulletGreen3_outline' ? 2.2 : 2;
     const w = img.width * ASSET_SCALE * scale;
     const h = img.height * ASSET_SCALE * scale;
 
-    if (isDart) {
+    if (isDart || isBarrel) {
       drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.flightAngle || 0);
     } else {
       ctx.drawImage(img, this.x - w / 2, this.y - h / 2, w, h);
@@ -404,6 +540,10 @@ class Tower {
     this.cooldown = 0;
     this.angle = 0;
     this.level = 1;
+    this.berserkLevel = 0;
+    this.berserkTimer = 0;
+    this.berserkCooldownTimer = 0;
+    this.isBerserkActive = false;
   }
 
   getRange() {
@@ -411,14 +551,31 @@ class Tower {
   }
 
   getDamage() {
-    return this.config.damage[this.level];
+    let dmg = this.config.damage[this.level];
+    if (this.isBerserkActive && this.config.berserk) {
+      dmg *= this.config.berserk.damageMultiplier[this.berserkLevel];
+    }
+    return dmg;
+  }
+
+  getSplashRadius() {
+    if (this.config.splashRadius) {
+      return this.config.splashRadius[this.level] || this.config.splashRadius;
+    }
+    return 0;
   }
 
   getProjectileKey() {
+    if (this.isBerserkActive && this.config.berserk && this.berserkLevel > 0) {
+      return this.config.berserk.projectiles[this.berserkLevel];
+    }
     return this.config.projectiles[this.level];
   }
 
   getBodySpriteKey() {
+    if (this.isBerserkActive && this.config.berserk) {
+      return this.config.berserk.bodySprite;
+    }
     if (this.config.bodySprite) return this.config.bodySprite;
     return this.config.bodyByLevel[this.level];
   }
@@ -435,6 +592,28 @@ class Tower {
   upgrade() {
     if (!this.canUpgrade()) return false;
     this.level++;
+    return true;
+  }
+
+  hasBerserk() {
+    return this.config.berserk && this.level >= 3;
+  }
+
+  getBerserkUpgradeCost() {
+    if (!this.hasBerserk() || this.berserkLevel >= 4) return null;
+    return this.config.berserk.cost[this.berserkLevel + 1];
+  }
+
+  canUpgradeBerserk() {
+    return this.hasBerserk() && this.berserkLevel < 4;
+  }
+
+  upgradeBerserk() {
+    if (!this.canUpgradeBerserk()) return false;
+    this.berserkLevel++;
+    if (this.berserkLevel === 1) {
+      this.berserkCooldownTimer = this.config.berserk.cooldown;
+    }
     return true;
   }
 
@@ -455,28 +634,57 @@ class Tower {
   }
 
   update(dt) {
+    if (this.config.berserk && this.berserkLevel > 0) {
+      if (this.isBerserkActive) {
+        this.berserkTimer -= dt;
+        if (this.berserkTimer <= 0) {
+          this.isBerserkActive = false;
+          this.berserkCooldownTimer = this.config.berserk.cooldown;
+        }
+      } else {
+        this.berserkCooldownTimer -= dt;
+        if (this.berserkCooldownTimer <= 0) {
+          this.isBerserkActive = true;
+          this.berserkTimer = this.config.berserk.duration;
+        }
+      }
+    }
+
     const target = this.findTarget();
     if (target) {
       this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
     }
 
+    const cooldown = (this.isBerserkActive && this.config.berserk)
+      ? this.config.fireCooldown * this.config.berserk.fireCooldownMultiplier
+      : this.config.fireCooldown;
+
     this.cooldown -= dt;
     if (this.cooldown > 0) return;
-
     if (!target) return;
 
-    this.game.projectiles.push(
-      new Projectile(
-        this.x,
-        this.y,
-        target,
-        this.getDamage(),
-        this.game,
-        this.getProjectileKey(),
-        this.config.projectileSpeed
-      )
-    );
-    this.cooldown = this.config.fireCooldown;
+    const dmg = this.getDamage();
+    const projKey = this.getProjectileKey();
+    const speed = this.config.projectileSpeed;
+    const splash = this.getSplashRadius();
+
+    if (this.isBerserkActive && this.config.berserk) {
+      const dir = this.angle + TANK_SPRITE_FACING;
+      const perpX = Math.cos(dir + Math.PI / 2) * 8;
+      const perpY = Math.sin(dir + Math.PI / 2) * 8;
+      this.game.projectiles.push(
+        new Projectile(this.x + perpX, this.y + perpY, target, dmg, this.game, projKey, speed, splash)
+      );
+      this.game.projectiles.push(
+        new Projectile(this.x - perpX, this.y - perpY, target, dmg, this.game, projKey, speed, splash)
+      );
+    } else {
+      this.game.projectiles.push(
+        new Projectile(this.x, this.y, target, dmg, this.game, projKey, speed, splash)
+      );
+    }
+
+    this.cooldown = cooldown;
   }
 
   findTarget() {
@@ -498,8 +706,9 @@ class Tower {
   draw(ctx, images) {
     const spriteKey = this.getBodySpriteKey();
     const img = images[spriteKey];
-    const w = img.width * ASSET_SCALE * (this.type === 'dart' ? 1.15 : 1);
-    const h = img.height * ASSET_SCALE * (this.type === 'dart' ? 1.15 : 1);
+    const isDartType = this.type === 'dart';
+    const w = img.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
+    const h = img.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
   }
 }
@@ -522,7 +731,10 @@ class Game {
     this.enemiesPerWave = 0;
     this.spawnTimer = 0;
     this.spawnInterval = 2.5;
+    this.bluePackChance = 0;
+    this.sandChance = 0;
     this.waveActive = false;
+    this.bossSpawned = false;
     this.gameOver = false;
     this.selectedTower = null;
 
@@ -539,6 +751,13 @@ class Game {
     this.upgradeConfirmBtn = document.getElementById('upgrade-confirm');
     this.upgradeCloseBtn = document.getElementById('upgrade-close');
 
+    this.berserkSection = document.getElementById('berserk-section');
+    this.berserkLevelEl = document.getElementById('berserk-level');
+    this.berserkBulletsEl = document.getElementById('berserk-bullets-preview');
+    this.berserkInfoEl = document.getElementById('berserk-info');
+    this.berserkErrorEl = document.getElementById('berserk-error');
+    this.berserkConfirmBtn = document.getElementById('berserk-confirm');
+
     this.modal = document.getElementById('purchase-modal');
     this.modalGoldEl = document.getElementById('modal-gold');
     this.modalErrorEl = document.getElementById('modal-error');
@@ -551,6 +770,7 @@ class Game {
       this.closePurchaseModal()
     );
     this.upgradeConfirmBtn.addEventListener('click', () => this.confirmUpgrade());
+    this.berserkConfirmBtn.addEventListener('click', () => this.confirmBerserkUpgrade());
     this.upgradeCloseBtn.addEventListener('click', () => this.closeUpgradeModal());
     this.upgradeModal.querySelector('.modal-backdrop').addEventListener('click', () =>
       this.closeUpgradeModal()
@@ -578,7 +798,8 @@ class Game {
     const enemiesPerWave = 6 + this.wave * 3;
     const spawnInterval = Math.max(0.65, 2.4 - this.wave * 0.18);
     const bluePackChance = Math.min(0.55, 0.12 + this.wave * 0.05);
-    return { enemiesPerWave, spawnInterval, bluePackChance };
+    const sandChance = this.wave >= 3 ? Math.min(0.2, 0.04 + this.wave * 0.02) : 0;
+    return { enemiesPerWave, spawnInterval, bluePackChance, sandChance };
   }
 
   startWave() {
@@ -586,13 +807,20 @@ class Game {
     this.enemiesPerWave = config.enemiesPerWave;
     this.spawnInterval = config.spawnInterval;
     this.bluePackChance = config.bluePackChance;
+    this.sandChance = config.sandChance;
     this.waveActive = true;
     this.enemiesSpawned = 0;
     this.spawnTimer = 0;
+    this.bossSpawned = false;
   }
 
   spawnRedEnemy() {
-    this.enemies.push(new Enemy(this, 'red'));
+    this.enemies.push(new Enemy(this, 'red', 0, this.wave));
+    this.enemiesSpawned++;
+  }
+
+  spawnSandEnemy() {
+    this.enemies.push(new Enemy(this, 'sand', 0, this.wave));
     this.enemiesSpawned++;
   }
 
@@ -606,13 +834,21 @@ class Game {
     }
 
     for (let i = 0; i < count; i++) {
-      this.enemies.push(new Enemy(this, 'blue', -i * 0.07));
+      this.enemies.push(new Enemy(this, 'blue', -i * 0.07, this.wave));
     }
     this.enemiesSpawned += count;
   }
 
+  spawnBoss() {
+    this.enemies.push(new Enemy(this, 'dark', 0, this.wave));
+    this.bossSpawned = true;
+  }
+
   spawnEnemy() {
-    if (Math.random() < this.bluePackChance) {
+    const roll = Math.random();
+    if (this.wave >= 3 && roll < this.sandChance) {
+      this.spawnSandEnemy();
+    } else if (roll < this.sandChance + this.bluePackChance) {
       this.spawnBluePack();
     } else {
       this.spawnRedEnemy();
@@ -621,6 +857,10 @@ class Game {
 
   spawnExplosion(x, y) {
     this.explosions.push(new Explosion(x, y, this.images));
+  }
+
+  spawnBarrelExplosion(x, y) {
+    this.explosions.push(new BarrelExplosion(x, y, this.images));
   }
 
   canvasToGameCoords(clientX, clientY) {
@@ -655,24 +895,35 @@ class Game {
 
   openUpgradeModal(tower) {
     this.selectTower(tower);
+
+    const isCannonMaxLevel = tower.type === 'cannon' && tower.level >= 3;
+
     document.getElementById('upgrade-title').textContent =
       `Прокачка: ${tower.config.label}`;
-    this.upgradeLevelEl.textContent = tower.level;
+    this.upgradeLevelEl.textContent = `${tower.level} / 3`;
     this.upgradeGoldEl.textContent = this.gold;
     this.upgradeErrorEl.classList.add('hidden');
     this.upgradeErrorEl.textContent = '';
     this.renderUpgradePreview(tower);
 
-    const cost = tower.getUpgradeCost();
-    if (!tower.canUpgrade()) {
-      this.upgradeConfirmBtn.textContent = 'Макс. уровень';
-      this.upgradeConfirmBtn.disabled = true;
+    if (isCannonMaxLevel) {
+      this.upgradeConfirmBtn.classList.add('hidden');
+      this.renderBerserkPreview(tower);
     } else {
-      this.upgradeConfirmBtn.textContent = `Улучшить (${cost} gold)`;
-      this.upgradeConfirmBtn.disabled = this.gold < cost;
-      if (this.gold < cost) {
-        this.upgradeErrorEl.textContent = 'Недостаточно золота';
-        this.upgradeErrorEl.classList.remove('hidden');
+      this.upgradeConfirmBtn.classList.remove('hidden');
+      this.berserkSection.classList.add('hidden');
+
+      const cost = tower.getUpgradeCost();
+      if (!tower.canUpgrade()) {
+        this.upgradeConfirmBtn.textContent = 'Макс. уровень';
+        this.upgradeConfirmBtn.disabled = true;
+      } else {
+        this.upgradeConfirmBtn.textContent = `Улучшить (${cost} gold)`;
+        this.upgradeConfirmBtn.disabled = this.gold < cost;
+        if (this.gold < cost) {
+          this.upgradeErrorEl.textContent = 'Недостаточно золота';
+          this.upgradeErrorEl.classList.remove('hidden');
+        }
       }
     }
 
@@ -704,9 +955,54 @@ class Game {
     }
   }
 
+  renderBerserkPreview(tower) {
+    const labels = { 0: '—', 1: 'Ур.1', 2: 'Ур.2', 3: 'Ур.3', 4: 'Ур.4' };
+    this.berserkSection.classList.remove('hidden');
+    this.berserkLevelEl.textContent = tower.berserkLevel;
+    this.berserkBulletsEl.innerHTML = '';
+
+    for (let lvl = 1; lvl <= 4; lvl++) {
+      const key = tower.config.berserk.projectiles[lvl];
+      const slot = document.createElement('div');
+      slot.className = 'bullet-slot';
+      if (lvl <= tower.berserkLevel) slot.classList.add('unlocked');
+      if (lvl === tower.berserkLevel + 1 && tower.berserkLevel < 4) slot.classList.add('active');
+
+      const img = document.createElement('img');
+      img.src = ASSET_BASE + `${key}.png`;
+      img.alt = labels[lvl];
+
+      const label = document.createElement('span');
+      label.textContent = labels[lvl];
+
+      slot.appendChild(img);
+      slot.appendChild(label);
+      this.berserkBulletsEl.appendChild(slot);
+    }
+
+    if (tower.canUpgradeBerserk()) {
+      const cost = tower.getBerserkUpgradeCost();
+      this.berserkInfoEl.textContent = `Берсерк ур.${tower.berserkLevel + 1}: ${cost} gold`;
+      this.berserkConfirmBtn.disabled = this.gold < cost;
+      this.berserkConfirmBtn.textContent = `Улучшить берсерк (${cost} gold)`;
+      this.berserkErrorEl.classList.add('hidden');
+      if (this.gold < cost) {
+        this.berserkErrorEl.textContent = 'Недостаточно золота';
+        this.berserkErrorEl.classList.remove('hidden');
+      }
+    } else {
+      this.berserkInfoEl.textContent = 'Максимальный уровень берсерка';
+      this.berserkConfirmBtn.disabled = true;
+      this.berserkConfirmBtn.textContent = 'Макс. берсерк';
+      this.berserkErrorEl.classList.add('hidden');
+    }
+  }
+
   closeUpgradeModal() {
     this.upgradeModal.classList.add('hidden');
     this.upgradeModal.setAttribute('aria-hidden', 'true');
+    this.berserkSection.classList.add('hidden');
+    this.upgradeConfirmBtn.classList.remove('hidden');
   }
 
   confirmUpgrade() {
@@ -723,6 +1019,24 @@ class Game {
 
     this.gold -= cost;
     tower.upgrade();
+    this.updateHud();
+    this.openUpgradeModal(tower);
+  }
+
+  confirmBerserkUpgrade() {
+    const tower = this.selectedTower;
+    if (!tower || !tower.canUpgradeBerserk() || this.gameOver) return;
+
+    const cost = tower.getBerserkUpgradeCost();
+    if (this.gold < cost) {
+      this.berserkErrorEl.textContent = 'Недостаточно золота';
+      this.berserkErrorEl.classList.remove('hidden');
+      this.berserkConfirmBtn.disabled = true;
+      return;
+    }
+
+    this.gold -= cost;
+    tower.upgradeBerserk();
     this.updateHud();
     this.openUpgradeModal(tower);
   }
@@ -896,8 +1210,13 @@ class Game {
       }
     }
 
+    if (this.waveActive && this.enemiesSpawned >= this.enemiesPerWave && !this.bossSpawned && this.wave >= 5) {
+      this.spawnBoss();
+    }
+
     const allSpawned = this.enemiesSpawned >= this.enemiesPerWave;
-    const waveCleared = allSpawned && this.enemies.length === 0;
+    const noBossPending = this.wave < 5 || this.bossSpawned;
+    const waveCleared = allSpawned && noBossPending && this.enemies.length === 0;
 
     if (waveCleared && this.waveActive) {
       this.waveActive = false;
