@@ -316,9 +316,71 @@ class BarrelExplosion {
   }
 }
 
+class BarrelMine {
+  static TRIGGER_RADIUS = 22;
+
+  constructor(x, y, damage, splashRadius, ttl = 10) {
+    this.x = x;
+    this.y = y;
+    this.damage = damage;
+    this.splashRadius = splashRadius;
+    this.ttl = ttl;
+    this.spent = false;
+  }
+
+  update(dt, game) {
+    if (this.spent) return;
+
+    this.ttl -= dt;
+    if (this.ttl <= 0) {
+      this.spent = true;
+      return;
+    }
+
+    for (const enemy of game.enemies) {
+      if (!enemy.alive) continue;
+      const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+      if (dist <= BarrelMine.TRIGGER_RADIUS) {
+        this.explode(game);
+        break;
+      }
+    }
+  }
+
+  explode(game) {
+    if (this.spent) return;
+    this.spent = true;
+    game.spawnBarrelExplosion(this.x, this.y);
+    for (const enemy of game.enemies) {
+      if (!enemy.alive) continue;
+      const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+      if (dist <= this.splashRadius) {
+        enemy.takeDamage(this.damage);
+      }
+    }
+  }
+
+  draw(ctx, images) {
+    if (this.spent) return;
+    const img = images.barrelBlack_side;
+    const w = img.width * ASSET_SCALE * 1.25;
+    const h = img.height * ASSET_SCALE * 1.25;
+    drawRotatedSprite(ctx, img, this.x, this.y, w, h, 0);
+  }
+}
+
+function getEnemyBaseHp(type, wave) {
+  let hp = ENEMY_TYPES[type].hp;
+  hp = Math.round(hp * (1 + (wave - 1) * 0.12));
+  if (type === 'dark') {
+    hp += Math.max(0, (wave - 5) * 150);
+  }
+  return hp;
+}
+
 class Enemy {
-  static HEAL_RADIUS = 80;
-  static HEAL_AMOUNT = 5;
+  static HEAL_RADIUS = 170;
+  static HEAL_AMOUNT = 8;
 
   constructor(game, type = 'red', pathOffset = 0, wave = 1) {
     const cfg = ENEMY_TYPES[type];
@@ -328,10 +390,9 @@ class Enemy {
     this.goldReward = cfg.gold;
     this.waypointIndex = 0;
     this.progress = pathOffset;
-    let hp = cfg.hp;
-    hp = Math.round(hp * (1 + (wave - 1) * 0.12));
-    if (type === 'dark') {
-      hp += Math.max(0, (wave - 5) * 150);
+    let hp = getEnemyBaseHp(type, wave);
+    if (type === 'sand') {
+      hp = Math.round(getEnemyBaseHp('dark', wave) * 0.35);
     }
     this.hp = hp;
     this.maxHp = hp;
@@ -664,9 +725,21 @@ class Tower {
     if (!target) return;
 
     const dmg = this.getDamage();
+    const splash = this.getSplashRadius();
+
+    if (this.type === 'barrel') {
+      const col = Math.floor(target.x / TILE_SIZE);
+      const row = Math.floor(target.y / TILE_SIZE);
+      if (isRoad(col, row)) {
+        const spot = cellCenter(col, row);
+        this.game.mines.push(new BarrelMine(spot.x, spot.y, dmg, splash));
+      }
+      this.cooldown = cooldown;
+      return;
+    }
+
     const projKey = this.getProjectileKey();
     const speed = this.config.projectileSpeed;
-    const splash = this.getSplashRadius();
 
     if (this.isBerserkActive && this.config.berserk) {
       const dir = this.angle + TANK_SPRITE_FACING;
@@ -722,6 +795,7 @@ class Game {
     this.enemies = [];
     this.towers = [];
     this.projectiles = [];
+    this.mines = [];
     this.explosions = [];
 
     this.gold = 100;
@@ -1241,12 +1315,17 @@ class Game {
       projectile.update(dt);
     }
 
+    for (const mine of this.mines) {
+      mine.update(dt, this);
+    }
+
     for (const explosion of this.explosions) {
       explosion.update(dt);
     }
 
     this.enemies = this.enemies.filter((e) => e.alive);
     this.projectiles = this.projectiles.filter((p) => !p.hit);
+    this.mines = this.mines.filter((m) => !m.spent);
     this.explosions = this.explosions.filter((e) => !e.finished);
   }
 
@@ -1279,6 +1358,10 @@ class Game {
 
     for (const enemy of this.enemies) {
       enemy.draw(ctx, images);
+    }
+
+    for (const mine of this.mines) {
+      mine.draw(ctx, images);
     }
 
     for (const projectile of this.projectiles) {
