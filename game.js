@@ -1338,12 +1338,14 @@ class Game {
     this.hintEl = document.getElementById('hint-strip');
     this.waveBannerEl = document.getElementById('wave-banner');
     this.mainMenu = document.getElementById('main-menu');
+    this.shopMenu = document.getElementById('shop-menu');
     this.pauseMenu = document.getElementById('pause-menu');
     this.defeatMenu = document.getElementById('defeat-menu');
     this.radialMenu = document.getElementById('radial-menu');
     this.pauseBtn = document.getElementById('pause-btn');
     this.speedBtn = document.getElementById('speed-btn');
     this.progressSummaryEl = document.getElementById('progress-summary');
+    this.shopProgressSummaryEl = document.getElementById('shop-progress-summary');
     this.shopTabsEl = document.getElementById('shop-tabs');
     this.shopGridEl = document.getElementById('shop-grid');
     this.startWaveLabelEl = document.getElementById('start-wave-label');
@@ -1354,6 +1356,9 @@ class Game {
     this.pauseBtn.addEventListener('click', () => this.togglePause());
     this.speedBtn.addEventListener('click', () => this.cycleGameSpeed());
     document.getElementById('start-btn').addEventListener('click', () => this.startGame());
+    document.getElementById('open-shop-btn').addEventListener('click', () => this.openShopMenu());
+    document.getElementById('shop-back-btn').addEventListener('click', () => this.openMainMenu());
+    document.getElementById('shop-play-btn').addEventListener('click', () => this.startGame());
     document.getElementById('start-wave-minus').addEventListener('click', () => this.changeStartWave(-1));
     document.getElementById('start-wave-plus').addEventListener('click', () => this.changeStartWave(1));
     document.getElementById('resume-btn').addEventListener('click', () => this.togglePause(false));
@@ -1471,12 +1476,24 @@ class Game {
     }
     this.progressSummaryEl.textContent =
       `Жетоны: ${this.progress.tokens} | Рекорд: ${this.progress.bestWave}`;
+    this.shopProgressSummaryEl.textContent =
+      `Жетоны: ${this.progress.tokens} | Рекорд: ${this.progress.bestWave}`;
     this.startWaveLabelEl.textContent = `Волна ${this.progress.selectedStartWave}`;
     this.speedBtn.textContent = `x${this.gameSpeed}`;
     this.speedBtn.disabled = getMaxGameSpeed(this.progress) <= 1;
     this.renderShopTabs();
     this.renderProgressShop();
     this.syncStartPreviewStats();
+  }
+
+  openMainMenu() {
+    this.mainMenu.classList.remove('hidden');
+    this.shopMenu.classList.add('hidden');
+  }
+
+  openShopMenu() {
+    this.mainMenu.classList.add('hidden');
+    this.shopMenu.classList.remove('hidden');
   }
 
   changeStartWave(delta) {
@@ -2266,6 +2283,7 @@ class Game {
     this.updateHud();
     this.started = true;
     this.mainMenu.classList.add('hidden');
+    this.shopMenu.classList.add('hidden');
     if (this.decorations.length === 0) {
       this.generateDecorations();
     }

@@ -141,6 +141,21 @@ body {
   border: 3px solid #000;
 }
 
+.menu-panel-fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border: 0;
+  padding: 20px 20px 28px;
+}
+
+.shop-top-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
 .menu-panel h1,
 .menu-panel h2 {
   margin: 0 0 12px;
@@ -166,9 +181,12 @@ body {
 }
 
 #start-btn,
+#open-shop-btn,
 #resume-btn,
 #restart-from-pause-btn,
-#restart-btn {
+#restart-btn,
+#shop-back-btn,
+#shop-play-btn {
   color: #000;
 }
 
