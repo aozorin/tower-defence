@@ -180,7 +180,7 @@ const DECORATION_ASSETS = {
 const DECORATION_SPAWN_CHANCE = 0.24;
 const PROGRESSION_STORAGE_KEY = 'towerDefenceProgressV1';
 const START_WAVE_OPTIONS = [1, 3, 5, 10, 15, 25];
-const GAME_SPEED_OPTIONS = [1, 2, 3];
+const GAME_SPEED_OPTIONS = [1, 1.25, 1.5, 2, 2.5, 3];
 const PROGRESSION_DEFAULTS = {
   tokens: 0,
   bestWave: 1,
@@ -200,6 +200,7 @@ const PROGRESSION_DEFAULTS = {
     barrelSnare: false,
   },
   berserkUnlocked: false,
+  metaBerserkLevel: 0,
   speedLevel: 0,
   startWaveLevel: 0,
   barrelTree: {
@@ -210,12 +211,12 @@ const PROGRESSION_DEFAULTS = {
     berserkUnlock: { sniper: 0, deployer: 0, booster: 0 },
   },
 };
-const STAT_MAX_LEVELS = { damage: 10, range: 10, economy: 10, lives: 10 };
+const STAT_MAX_LEVELS = { damage: 5, range: 5, economy: 5, lives: 5 };
 const STAT_COSTS = {
-  damage: [40, 85, 130, 180, 240, 300, 390, 500, 640, 820],
-  range: [35, 75, 115, 165, 220, 285, 360, 460, 590, 750],
-  economy: [35, 70, 105, 150, 205, 270, 350, 450, 580, 740],
-  lives: [45, 90, 135, 185, 250, 330, 430, 560, 730, 940],
+  damage: [40, 90, 170, 290, 450],
+  range: [35, 80, 150, 260, 410],
+  economy: [35, 75, 140, 240, 380],
+  lives: [45, 100, 190, 320, 500],
 };
 const TOWER_UNLOCK_COSTS = { dart: 70, barrel: 130 };
 const TOWER_LEVEL_COSTS = {
@@ -233,8 +234,8 @@ const EFFECT_COSTS = {
   barrelNapalm: 360,
   barrelSnare: 520,
 };
-const BERSERK_UNLOCK_COST = 420;
-const SPEED_LEVEL_COSTS = [120, 300];
+const META_BERSERK_COSTS = [180, 320, 520, 820, 1200];
+const SPEED_LEVEL_COSTS = [120, 220, 360, 560, 840];
 const START_WAVE_COSTS = [120, 220, 380, 650, 1100];
 const BARREL_TREE_COSTS = {
   cooldown: [140, 240, 360, 520, 760],
@@ -933,6 +934,9 @@ class Tower {
     let dmg = this.config.damage[this.level];
     if (this.isBerserkActive && this.config.berserk) {
       dmg *= this.config.berserk.damageMultiplier[this.berserkLevel];
+      if (this.type === 'cannon') {
+        dmg *= 1 + (this.game.progress.metaBerserkLevel || 0) * 0.1;
+      }
     }
     const progressMultiplier = this.game.getTowerDamageMultiplier?.(this.type) ?? 1;
     let result = Math.round(dmg * Tower.DAMAGE_MULTIPLIER * progressMultiplier);
@@ -964,6 +968,9 @@ class Tower {
       value *= Math.max(0.5, 1 - cdLevel * 0.1);
       if (this.barrelBerserkMode === 'sniper') value *= 1.25;
       if (this.barrelBerserkMode === 'deployer') value *= Math.max(0.32, 0.7 - this.barrelBerserkLevels.deployer * 0.06);
+    }
+    if (this.type === 'cannon' && this.isBerserkActive) {
+      value *= Math.max(0.65, 1 - (this.game.progress.metaBerserkLevel || 0) * 0.05);
     }
     const aura = this.game.getBoosterAuraForTower?.(this) ?? 0;
     if (aura > 0) value *= Math.max(0.55, 1 - aura * 0.45);
@@ -1517,7 +1524,7 @@ class Game {
   }
 
   getTowerDamageMultiplier(type) {
-    let multiplier = 0.72 + this.progress.stats.damage * 0.09;
+    let multiplier = 0.72 + this.progress.stats.damage * 0.08;
     if (type === 'cannon' && this.progress.effects.cannonImpact) multiplier += 0.08;
     if (type === 'cannon' && this.progress.effects.cannonPierce) multiplier += 0.1;
     if (type === 'dart' && this.progress.effects.dartOvercharge) multiplier += 0.08;
@@ -1566,7 +1573,7 @@ class Game {
   }
 
   isBerserkUnlocked() {
-    return this.progress.berserkUnlocked;
+    return (this.progress.metaBerserkLevel || 0) >= 1 || this.progress.berserkUnlocked;
   }
 
   hasProgressEffect(effect) {
@@ -1597,6 +1604,9 @@ class Game {
   }
 
   updateProgressUi() {
+    for (const stat of Object.keys(STAT_MAX_LEVELS)) {
+      this.progress.stats[stat] = Math.max(0, Math.min(STAT_MAX_LEVELS[stat], this.progress.stats[stat] || 0));
+    }
     const maxStartWave = getMaxStartWave(this.progress);
     if (this.progress.selectedStartWave > maxStartWave) {
       this.progress.selectedStartWave = maxStartWave;
@@ -1715,84 +1725,74 @@ class Game {
     }
 
     if (tab === 'core') {
-      const statTitles = {
-        damage: 'Урон',
-        range: 'Дальность',
-        economy: 'Стартовое золото',
-        lives: 'Прочность базы',
+      const branchInfo = {
+        damage: { title: 'Урон', detail: (from, to) => `бонус: +${from * 8}% -> +${to * 8}%` },
+        range: { title: 'Дальность', detail: (from, to) => `бонус: +${from * 6}% -> +${to * 6}%` },
+        economy: { title: 'Стартовое золото', detail: (from, to) => `${90 + from * 45} -> ${90 + to * 45}` },
+        lives: { title: 'Прочность базы', detail: (from, to) => `${10 + from * 5} -> ${10 + to * 5}` },
       };
-      for (const [stat, title] of Object.entries(statTitles)) {
+      for (const [stat, cfg] of Object.entries(branchInfo)) {
         const level = this.progress.stats[stat];
-        let detailText = 'Максимум';
-        if (level < STAT_MAX_LEVELS[stat]) {
-          if (stat === 'damage') {
-            const before = 0.72 + level * 0.09;
-            const after = 0.72 + (level + 1) * 0.09;
-            detailText = `множитель ${before.toFixed(2)} -> ${after.toFixed(2)} (${formatPercentChange(before, after)})`;
-          } else if (stat === 'range') {
-            const before = 0.9 + level * 0.06;
-            const after = 0.9 + (level + 1) * 0.06;
-            detailText = `множитель ${before.toFixed(2)} -> ${after.toFixed(2)} (${formatPercentChange(before, after)})`;
-          } else if (stat === 'economy') {
-            const before = 90 + level * 45;
-            const after = 90 + (level + 1) * 45;
-            detailText = `${before} -> ${after}`;
-          } else if (stat === 'lives') {
-            const before = 10 + level * 5;
-            const after = 10 + (level + 1) * 5;
-            detailText = `${before} -> ${after}`;
-          }
+        for (let target = 1; target <= STAT_MAX_LEVELS[stat]; target++) {
+          add(
+            `stat-${stat}-${target}`,
+            `${cfg.title} ${target}/${STAT_MAX_LEVELS[stat]}`,
+            cfg.detail(target - 1, target),
+            STAT_COSTS[stat][target - 1],
+            level >= target,
+            () => { this.progress.stats[stat] = target; },
+            level < target - 1,
+            cfg.title
+          );
         }
-        add(
-          `stat-${stat}`,
-          `${title} ${level}/${STAT_MAX_LEVELS[stat]}`,
-          detailText,
-          STAT_COSTS[stat][level],
-          level >= STAT_MAX_LEVELS[stat],
-          () => { this.progress.stats[stat]++; },
-          false,
-          'Базовые параметры'
-        );
       }
       return items;
     }
 
     if (tab === 'meta') {
-      add(
-        'berserk',
-        'Берсерк',
-        'Открывает уровни берсерка (урон x4..x8, двойной выстрел)',
-        BERSERK_UNLOCK_COST,
-        this.progress.berserkUnlocked,
-        () => { this.progress.berserkUnlocked = true; },
-        this.progress.towerMaxLevel.cannon < 3,
-        'Режимы'
-      );
-      const nextSpeedLevel = this.progress.speedLevel + 1;
-      add(
-        'speed',
-        `Ускорение x${GAME_SPEED_OPTIONS[nextSpeedLevel] || GAME_SPEED_OPTIONS.at(-1)}`,
-        `скорость ${GAME_SPEED_OPTIONS[this.progress.speedLevel]}x -> ${GAME_SPEED_OPTIONS[nextSpeedLevel] || GAME_SPEED_OPTIONS.at(-1)}x`,
-        SPEED_LEVEL_COSTS[this.progress.speedLevel],
-        this.progress.speedLevel >= SPEED_LEVEL_COSTS.length,
-        () => { this.progress.speedLevel++; },
-        false,
-        'Режимы'
-      );
-      const nextStartWaveLevel = this.progress.startWaveLevel + 1;
-      add(
-        'start-wave',
-        `Старт с ${START_WAVE_OPTIONS[nextStartWaveLevel] || START_WAVE_OPTIONS.at(-1)}`,
-        `волна ${START_WAVE_OPTIONS[this.progress.startWaveLevel]} -> ${START_WAVE_OPTIONS[nextStartWaveLevel] || START_WAVE_OPTIONS.at(-1)}`,
-        START_WAVE_COSTS[this.progress.startWaveLevel],
-        this.progress.startWaveLevel >= START_WAVE_COSTS.length,
-        () => {
-          this.progress.startWaveLevel++;
-          this.progress.selectedStartWave = getMaxStartWave(this.progress);
-        },
-        false,
-        'Режимы'
-      );
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        const prev = lvl - 1;
+        add(
+          `meta-berserk-${lvl}`,
+          `Берсерк ${lvl}/5`,
+          `сила режима: +${prev * 10}% -> +${lvl * 10}%`,
+          META_BERSERK_COSTS[lvl - 1],
+          (this.progress.metaBerserkLevel || 0) >= lvl,
+          () => {
+            this.progress.metaBerserkLevel = lvl;
+            if (lvl >= 1) this.progress.berserkUnlocked = true;
+          },
+          this.progress.towerMaxLevel.cannon < 3 || (this.progress.metaBerserkLevel || 0) < lvl - 1,
+          'Берсерк'
+        );
+      }
+      for (let lvl = 1; lvl <= SPEED_LEVEL_COSTS.length; lvl++) {
+        add(
+          `meta-speed-${lvl}`,
+          `Скорость ${lvl}/${SPEED_LEVEL_COSTS.length}`,
+          `${GAME_SPEED_OPTIONS[lvl - 1]}x -> ${GAME_SPEED_OPTIONS[lvl]}x`,
+          SPEED_LEVEL_COSTS[lvl - 1],
+          this.progress.speedLevel >= lvl,
+          () => { this.progress.speedLevel = lvl; },
+          this.progress.speedLevel < lvl - 1,
+          'Ускорение'
+        );
+      }
+      for (let lvl = 1; lvl <= START_WAVE_COSTS.length; lvl++) {
+        add(
+          `meta-wave-${lvl}`,
+          `Старт волны ${lvl}/${START_WAVE_COSTS.length}`,
+          `${START_WAVE_OPTIONS[lvl - 1]} -> ${START_WAVE_OPTIONS[lvl]}`,
+          START_WAVE_COSTS[lvl - 1],
+          this.progress.startWaveLevel >= lvl,
+          () => {
+            this.progress.startWaveLevel = lvl;
+            this.progress.selectedStartWave = getMaxStartWave(this.progress);
+          },
+          this.progress.startWaveLevel < lvl - 1,
+          'Старт с волны'
+        );
+      }
       return items;
     }
 
