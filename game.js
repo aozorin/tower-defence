@@ -8,19 +8,13 @@ const BULLET_FRONT_FLIP = Math.PI;
 
 const PATHS = [
   [
-    { col: 10, row: 0 }, { col: 10, row: 2 }, { col: 7, row: 2 }, { col: 7, row: 4 },
-    { col: 14, row: 4 }, { col: 14, row: 6 }, { col: 9, row: 6 }, { col: 9, row: 8 },
-    { col: 16, row: 8 }, { col: 16, row: 10 }, { col: 11, row: 10 }, { col: 11, row: 13 },
-  ],
-  [
-    { col: 0, row: 6 }, { col: 3, row: 6 }, { col: 3, row: 3 }, { col: 8, row: 3 },
-    { col: 8, row: 7 }, { col: 5, row: 7 }, { col: 5, row: 9 }, { col: 13, row: 9 },
-    { col: 13, row: 11 }, { col: 11, row: 11 }, { col: 11, row: 13 },
-  ],
-  [
-    { col: 21, row: 5 }, { col: 18, row: 5 }, { col: 18, row: 2 }, { col: 12, row: 2 },
-    { col: 12, row: 5 }, { col: 17, row: 5 }, { col: 17, row: 7 }, { col: 8, row: 7 },
-    { col: 8, row: 10 }, { col: 11, row: 10 }, { col: 11, row: 13 },
+    { col: 0, row: 8 },
+    { col: 7, row: 8 },
+    { col: 7, row: 4 },
+    { col: 3, row: 4 },
+    { col: 3, row: 10 },
+    { col: 11, row: 10 },
+    { col: 11, row: 13 },
   ],
 ];
 
@@ -144,6 +138,16 @@ const RANK_ASSETS = {
   gold2: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank002.png',
   gold3: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank003.png',
 };
+const DECORATION_ASSETS = {
+  treeGreen_twigs: `${ASSET_BASE}treeGreen_twigs.png`,
+  treeBrown_small: `${ASSET_BASE}treeBrown_small.png`,
+  wireCrooked: `${ASSET_BASE}wireCrooked.png`,
+  oilSpill_large: `${ASSET_BASE}oilSpill_large.png`,
+  crateWood: `${ASSET_BASE}crateWood.png`,
+  barricadeWood: `${ASSET_BASE}barricadeWood.png`,
+  crateMetal: `${ASSET_BASE}crateMetal.png`,
+};
+const DECORATION_SPAWN_CHANCE = 0.24;
 const ASSET_KEYS = [
   'tileGrass1',
   'tileGrass_roadEast',
@@ -1020,6 +1024,8 @@ class Game {
     this.waveBannerTimer = 0;
     this.currentRadial = null;
     this.selectedTower = null;
+    this.decorations = [];
+    this.availableDecorationKeys = [];
 
     this.lastTime = 0;
     this.hintMessage = '';
@@ -1043,6 +1049,7 @@ class Game {
     });
 
     this.loadAssets().then(() => {
+      this.generateDecorations();
       this.updateHud();
       this.lastTime = performance.now();
       requestAnimationFrame((t) => this.loop(t));
@@ -1062,7 +1069,36 @@ class Game {
     const rankEntries = await Promise.all(
       Object.entries(RANK_ASSETS).map(async ([k, src]) => [k, await loadImage(src)])
     );
-    this.images = Object.fromEntries([...entries, ...uiEntries, ...rankEntries]);
+    const optionalDecorationResults = await Promise.allSettled(
+      Object.entries(DECORATION_ASSETS).map(async ([key, src]) => [key, await loadImage(src)])
+    );
+    const decorationEntries = optionalDecorationResults
+      .filter((result) => result.status === 'fulfilled')
+      .map((result) => result.value);
+    this.availableDecorationKeys = decorationEntries.map(([key]) => key);
+    this.images = Object.fromEntries([...entries, ...uiEntries, ...rankEntries, ...decorationEntries]);
+  }
+
+  generateDecorations() {
+    this.decorations = [];
+    if (this.availableDecorationKeys.length === 0) return;
+
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        const key = `${col},${row}`;
+        if (isRoad(col, row)) continue;
+        if (BUILD_SLOT_SET.has(key)) continue;
+        if (col === BASE_COL && row === BASE_ROW) continue;
+        if (Math.random() > DECORATION_SPAWN_CHANCE) continue;
+
+        const decorationKey = this.availableDecorationKeys[
+          Math.floor(Math.random() * this.availableDecorationKeys.length)
+        ];
+        const rotation = (Math.random() - 0.5) * 0.3;
+        const scale = 0.72 + Math.random() * 0.36;
+        this.decorations.push({ col, row, decorationKey, rotation, scale });
+      }
+    }
   }
 
   getWaveConfig() {
@@ -1374,6 +1410,9 @@ class Game {
   startGame() {
     this.started = true;
     this.mainMenu.classList.add('hidden');
+    if (this.decorations.length === 0) {
+      this.generateDecorations();
+    }
     this.startWave();
   }
 
@@ -1478,6 +1517,14 @@ class Game {
         const img = images[key];
         ctx.drawImage(img, col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
       }
+    }
+    for (const decoration of this.decorations) {
+      const img = images[decoration.decorationKey];
+      if (!img) continue;
+      const center = cellCenter(decoration.col, decoration.row);
+      const w = img.width * ASSET_SCALE * decoration.scale;
+      const h = img.height * ASSET_SCALE * decoration.scale;
+      drawRotatedSprite(ctx, img, center.x, center.y, w, h, decoration.rotation);
     }
     const baseCenter = cellCenter(BASE_COL, BASE_ROW);
     const baseW = TILE_SIZE * 1.8;

@@ -153,6 +153,12 @@ body {
     center / 100% 100% no-repeat;
 }
 
+#start-btn,
+#resume-btn,
+#restart-from-pause-btn {
+  color: #000;
+}
+
 .radial-menu {
   position: absolute;
   z-index: 40;
