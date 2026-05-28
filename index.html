@@ -23,6 +23,7 @@
         <img src="assets/kenney_game-icons/PNG/White/2x/leaderboardsSimple.png" alt="Wave">
         <span id="wave">1</span>
       </div>
+      <button id="speed-btn" type="button" class="hud-pause hud-speed">x1</button>
       <button id="pause-btn" type="button" class="hud-pause">
         <img src="assets/kenney_game-icons/PNG/White/2x/pause.png" alt="Pause">
       </button>
@@ -36,8 +37,14 @@
     <div id="main-menu" class="screen-menu">
       <div class="menu-panel">
         <h1>Tank Defence</h1>
-        <p>Три маршрута. Защити базу у нижней границы.</p>
+        <p id="progress-summary">Жетоны: 0</p>
+        <div class="start-wave-control">
+          <button id="start-wave-minus" type="button">-</button>
+          <span id="start-wave-label">Волна 1</span>
+          <button id="start-wave-plus" type="button">+</button>
+        </div>
         <button id="start-btn" type="button">Начать игру</button>
+        <div id="shop-grid" class="shop-grid"></div>
       </div>
     </div>
 
@@ -53,6 +60,7 @@
       <div class="menu-panel">
         <h2>Поражение</h2>
         <p>База уничтожена.</p>
+        <p id="run-reward">Жетоны: +0</p>
         <button id="restart-btn" type="button">Играть снова</button>
       </div>
     </div>

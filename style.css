@@ -69,6 +69,16 @@ body {
     center / 100% 100% no-repeat;
 }
 
+.hud-speed {
+  margin-left: auto;
+  font-size: 18px;
+  font-family: inherit;
+}
+
+.hud-speed + .hud-pause {
+  margin-left: 0;
+}
+
 #game {
   display: block;
   width: 100vw;
@@ -121,7 +131,9 @@ body {
 
 .menu-panel {
   position: relative;
-  min-width: min(88vw, 520px);
+  width: min(92vw, 860px);
+  max-height: 92vh;
+  overflow: auto;
   padding: 28px;
   text-align: center;
   color: #fff;
@@ -158,6 +170,66 @@ body {
 #restart-from-pause-btn,
 #restart-btn {
   color: #000;
+}
+
+.start-wave-control {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.start-wave-control span {
+  min-width: 120px;
+  font-size: 22px;
+}
+
+.start-wave-control button {
+  min-width: 46px;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  text-align: left;
+}
+
+.shop-item {
+  min-height: 76px;
+  padding: 10px;
+  color: #ecf7ff;
+  background: rgba(5, 13, 35, 0.72);
+  border: 2px solid rgba(89, 191, 255, 0.72);
+}
+
+.shop-item strong,
+.shop-item span {
+  display: block;
+}
+
+.shop-item strong {
+  font-size: 18px;
+}
+
+.shop-item span {
+  margin-top: 3px;
+  font-size: 14px;
+}
+
+.shop-item button {
+  min-width: 0;
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 7px 8px;
+  font-size: 16px;
+}
+
+.shop-item button:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .radial-menu {

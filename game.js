@@ -166,6 +166,7 @@ const RANK_ASSETS = {
   gold1: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank001.png',
   gold2: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank002.png',
   gold3: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank003.png',
+  gold4: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank004.png',
 };
 const DECORATION_ASSETS = {
   treeGreen_twigs: `${ASSET_BASE}treeGreen_twigs.png`,
@@ -177,6 +178,91 @@ const DECORATION_ASSETS = {
   crateMetal: `${ASSET_BASE}crateMetal.png`,
 };
 const DECORATION_SPAWN_CHANCE = 0.24;
+const PROGRESSION_STORAGE_KEY = 'towerDefenceProgressV1';
+const START_WAVE_OPTIONS = [1, 3, 5, 10, 15, 25];
+const GAME_SPEED_OPTIONS = [1, 2, 3];
+const PROGRESSION_DEFAULTS = {
+  tokens: 0,
+  bestWave: 1,
+  runs: 0,
+  selectedStartWave: 1,
+  unlockedTowers: { cannon: true, dart: false, barrel: false },
+  towerMaxLevel: { cannon: 1, dart: 1, barrel: 1 },
+  stats: { damage: 0, range: 0, economy: 0, lives: 0 },
+  effects: { cannonImpact: false, dartOvercharge: false, barrelStockpile: false },
+  berserkUnlocked: false,
+  speedLevel: 0,
+  startWaveLevel: 0,
+};
+const STAT_MAX_LEVELS = { damage: 5, range: 5, economy: 5, lives: 4 };
+const STAT_COSTS = {
+  damage: [40, 85, 150, 240, 360],
+  range: [35, 80, 140, 225, 330],
+  economy: [35, 75, 130, 210, 320],
+  lives: [45, 100, 190, 330],
+};
+const TOWER_UNLOCK_COSTS = { dart: 70, barrel: 130 };
+const TOWER_LEVEL_COSTS = {
+  cannon: { 2: 25, 3: 70 },
+  dart: { 2: 55, 3: 100, 4: 260, 5: 520 },
+  barrel: { 2: 130, 3: 260 },
+};
+const EFFECT_COSTS = { cannonImpact: 220, dartOvercharge: 220, barrelStockpile: 260 };
+const BERSERK_UNLOCK_COST = 420;
+const SPEED_LEVEL_COSTS = [120, 300];
+const START_WAVE_COSTS = [120, 220, 380, 650, 1100];
+
+function cloneProgressDefaults() {
+  return JSON.parse(JSON.stringify(PROGRESSION_DEFAULTS));
+}
+
+function mergeProgress(saved) {
+  const progress = cloneProgressDefaults();
+  if (!saved || typeof saved !== 'object') return progress;
+  for (const [key, value] of Object.entries(saved)) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      progress[key] &&
+      typeof progress[key] === 'object'
+    ) {
+      progress[key] = { ...progress[key], ...value };
+    } else if (key in progress) {
+      progress[key] = value;
+    }
+  }
+  return progress;
+}
+
+function loadProgress() {
+  try {
+    return mergeProgress(JSON.parse(localStorage.getItem(PROGRESSION_STORAGE_KEY)));
+  } catch (error) {
+    return cloneProgressDefaults();
+  }
+}
+
+function saveProgress(progress) {
+  localStorage.setItem(PROGRESSION_STORAGE_KEY, JSON.stringify(progress));
+}
+
+function getMaxStartWave(progress) {
+  return START_WAVE_OPTIONS[Math.min(progress.startWaveLevel, START_WAVE_OPTIONS.length - 1)];
+}
+
+function getMaxGameSpeed(progress) {
+  return GAME_SPEED_OPTIONS[Math.min(progress.speedLevel, GAME_SPEED_OPTIONS.length - 1)];
+}
+
+function getProgressPower(progress) {
+  const towerPower = Object.entries(progress.towerMaxLevel)
+    .reduce((sum, [, level]) => sum + Math.max(0, level - 1), 0);
+  const unlockPower = Object.values(progress.unlockedTowers).filter(Boolean).length - 1;
+  const statPower = Object.values(progress.stats).reduce((sum, level) => sum + level, 0);
+  const effectPower = Object.values(progress.effects).filter(Boolean).length * 2;
+  return Math.max(0, towerPower * 1.2 + unlockPower * 1.5 + statPower + effectPower);
+}
 const ASSET_KEYS = [
   'tileGrass1',
   'tileSand1',
@@ -442,8 +528,9 @@ class Enemy {
     this.game = game;
     this.type = type;
     this.wave = wave;
-    this.baseSpeed = cfg.speed;
-    this.speed = cfg.speed;
+    const speedMultiplier = game.getEnemySpeedMultiplier?.() ?? 1;
+    this.baseSpeed = cfg.speed * speedMultiplier;
+    this.speed = this.baseSpeed;
     this.goldReward = Math.round(cfg.gold * Enemy.GOLD_REWARD_MULTIPLIER);
     this.waypointIndex = 0;
     this.progress = pathOffset;
@@ -451,6 +538,7 @@ class Enemy {
     if (type === 'sand') {
       hp = getSandBaseHp(wave);
     }
+    hp = Math.round(hp * (game.getEnemyDifficultyMultiplier?.() ?? 1));
     this.hp = hp;
     this.maxHp = hp;
     this.alive = true;
@@ -761,6 +849,7 @@ class Tower {
     if (this.type === 'cannon' && this.isBerserkActive) {
       range *= 2;
     }
+    range *= this.game.getTowerRangeMultiplier?.(this.type) ?? 1;
     return range;
   }
 
@@ -769,23 +858,38 @@ class Tower {
     if (this.isBerserkActive && this.config.berserk) {
       dmg *= this.config.berserk.damageMultiplier[this.berserkLevel];
     }
-    return Math.round(dmg * Tower.DAMAGE_MULTIPLIER);
+    const progressMultiplier = this.game.getTowerDamageMultiplier?.(this.type) ?? 1;
+    return Math.round(dmg * Tower.DAMAGE_MULTIPLIER * progressMultiplier);
   }
 
   getFireCooldown() {
     const cooldown = this.config.fireCooldown;
-    if (typeof cooldown === 'object') {
-      return cooldown[this.level] ?? cooldown[1];
+    let value = cooldown;
+    if (typeof value === 'object') {
+      value = value[this.level] ?? value[1];
     }
-    return cooldown;
+    if (this.type === 'dart' && this.game.hasProgressEffect?.('dartOvercharge')) {
+      value *= 0.85;
+    }
+    if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelStockpile')) {
+      value *= 0.9;
+    }
+    return value;
   }
 
   getSplashRadius() {
+    if (this.type === 'cannon' && this.level >= 3 && this.game.hasProgressEffect?.('cannonImpact')) {
+      return 34;
+    }
     if (this.config.splashRadius) {
-      if (typeof this.config.splashRadius === 'object') {
-        return this.config.splashRadius[this.level] ?? 0;
+      let radius = this.config.splashRadius;
+      if (typeof radius === 'object') {
+        radius = radius[this.level] ?? 0;
       }
-      return this.config.splashRadius;
+      if (radius && this.type === 'barrel' && this.game.hasProgressEffect?.('barrelStockpile')) {
+        radius += 8;
+      }
+      return radius;
     }
     return 0;
   }
@@ -806,6 +910,8 @@ class Tower {
   }
 
   getUpgradeCost() {
+    const maxLevel = this.game.getTowerMaxLevel?.(this.type) ?? 99;
+    if (this.level + 1 > maxLevel) return null;
     return this.config.upgradeCost?.[this.level + 1] ?? null;
   }
 
@@ -820,7 +926,7 @@ class Tower {
   }
 
   hasBerserk() {
-    return this.config.berserk && this.level >= 3;
+    return this.config.berserk && this.level >= 3 && this.game.isBerserkUnlocked?.();
   }
 
   getBerserkUpgradeCost() {
@@ -927,7 +1033,8 @@ class Tower {
       const activeMinesByThisTower = this.game.mines.filter(
         (mine) => !mine.spent && mine.ownerTower === this
       );
-      if (activeMinesByThisTower.length >= Tower.MAX_BARREL_MINES) {
+      const mineLimit = this.game.getBarrelMineLimit?.() ?? Tower.MAX_BARREL_MINES;
+      if (activeMinesByThisTower.length >= mineLimit) {
         const mineToReplace = activeMinesByThisTower[
           Math.floor(Math.random() * activeMinesByThisTower.length)
         ];
@@ -1084,8 +1191,16 @@ class Tower {
     const w = img.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
     const h = img.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
+    this.drawHudBars(ctx);
+  }
+
+  drawRank(ctx, images) {
+    const spriteKey = this.getBodySpriteKey();
+    const img = images[spriteKey];
+    const isDartType = this.type === 'dart';
+    const h = img.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
     const rankKey = this.berserkLevel > 0
-      ? `gold${Math.min(3, this.berserkLevel)}`
+      ? `gold${Math.min(4, this.berserkLevel)}`
       : this.level > 3
         ? `gold${Math.min(3, this.level - 3)}`
         : `silver${Math.min(3, this.level)}`;
@@ -1095,7 +1210,6 @@ class Tower {
       const rh = rw * (rankImg.height / rankImg.width);
       ctx.drawImage(rankImg, this.x - rw / 2, this.y - h * 0.55 - rh, rw, rh);
     }
-    this.drawHudBars(ctx);
   }
 }
 
@@ -1111,9 +1225,14 @@ class Game {
     this.mines = [];
     this.explosions = [];
 
-    this.gold = 120;
-    this.lives = 10;
+    this.progress = loadProgress();
+    this.gameSpeed = 1;
+    this.runRewarded = false;
+    this.runStartWave = this.progress.selectedStartWave;
+    this.gold = this.getStartingGold();
+    this.lives = this.getStartingLives();
     this.wave = 1;
+    this.highestWaveThisRun = 1;
     this.enemiesSpawned = 0;
     this.enemiesPerWave = 0;
     this.spawnTimer = 0;
@@ -1144,10 +1263,18 @@ class Game {
     this.defeatMenu = document.getElementById('defeat-menu');
     this.radialMenu = document.getElementById('radial-menu');
     this.pauseBtn = document.getElementById('pause-btn');
+    this.speedBtn = document.getElementById('speed-btn');
+    this.progressSummaryEl = document.getElementById('progress-summary');
+    this.shopGridEl = document.getElementById('shop-grid');
+    this.startWaveLabelEl = document.getElementById('start-wave-label');
+    this.runRewardEl = document.getElementById('run-reward');
 
     this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
     this.pauseBtn.addEventListener('click', () => this.togglePause());
+    this.speedBtn.addEventListener('click', () => this.cycleGameSpeed());
     document.getElementById('start-btn').addEventListener('click', () => this.startGame());
+    document.getElementById('start-wave-minus').addEventListener('click', () => this.changeStartWave(-1));
+    document.getElementById('start-wave-plus').addEventListener('click', () => this.changeStartWave(1));
     document.getElementById('resume-btn').addEventListener('click', () => this.togglePause(false));
     document.getElementById('restart-btn').addEventListener('click', () => this.restart());
     document.getElementById('restart-from-pause-btn').addEventListener('click', () => this.restart());
@@ -1158,6 +1285,7 @@ class Game {
     this.loadAssets().then(() => {
       this.generateDecorations();
       this.updateHud();
+      this.updateProgressUi();
       this.lastTime = performance.now();
       requestAnimationFrame((t) => this.loop(t));
     });
@@ -1186,6 +1314,249 @@ class Game {
     this.images = Object.fromEntries([...entries, ...uiEntries, ...rankEntries, ...decorationEntries]);
   }
 
+  saveProgress() {
+    saveProgress(this.progress);
+  }
+
+  getProgressPower() {
+    return getProgressPower(this.progress);
+  }
+
+  getStartingGold() {
+    return 90 + this.progress.stats.economy * 30 + (this.progress.selectedStartWave - 1) * 16;
+  }
+
+  getStartingLives() {
+    return 8 + this.progress.stats.lives * 2;
+  }
+
+  getTowerDamageMultiplier(type) {
+    let multiplier = 0.72 + this.progress.stats.damage * 0.07;
+    if (type === 'cannon' && this.progress.effects.cannonImpact) multiplier += 0.08;
+    if (type === 'dart' && this.progress.effects.dartOvercharge) multiplier += 0.08;
+    if (type === 'barrel' && this.progress.effects.barrelStockpile) multiplier += 0.05;
+    return multiplier;
+  }
+
+  getTowerRangeMultiplier(type) {
+    let multiplier = 0.9 + this.progress.stats.range * 0.05;
+    if (type === 'barrel' && this.progress.effects.barrelStockpile) multiplier += 0.05;
+    return multiplier;
+  }
+
+  getEnemyDifficultyMultiplier() {
+    return 1 + this.getProgressPower() * 0.035;
+  }
+
+  getEnemySpeedMultiplier() {
+    return 1 + this.getProgressPower() * 0.006;
+  }
+
+  isTowerUnlocked(type) {
+    return !!this.progress.unlockedTowers[type];
+  }
+
+  getTowerMaxLevel(type) {
+    return this.progress.towerMaxLevel[type] || 1;
+  }
+
+  isBerserkUnlocked() {
+    return this.progress.berserkUnlocked;
+  }
+
+  hasProgressEffect(effect) {
+    return !!this.progress.effects[effect];
+  }
+
+  getBarrelMineLimit() {
+    return Tower.MAX_BARREL_MINES + (this.hasProgressEffect('barrelStockpile') ? 10 : 0);
+  }
+
+  updateProgressUi() {
+    const maxStartWave = getMaxStartWave(this.progress);
+    if (this.progress.selectedStartWave > maxStartWave) {
+      this.progress.selectedStartWave = maxStartWave;
+      this.saveProgress();
+    }
+    this.progressSummaryEl.textContent =
+      `Жетоны: ${this.progress.tokens} | Рекорд: ${this.progress.bestWave}`;
+    this.startWaveLabelEl.textContent = `Волна ${this.progress.selectedStartWave}`;
+    this.speedBtn.textContent = `x${this.gameSpeed}`;
+    this.speedBtn.disabled = getMaxGameSpeed(this.progress) <= 1;
+    this.renderProgressShop();
+  }
+
+  changeStartWave(delta) {
+    const maxStartWave = getMaxStartWave(this.progress);
+    const currentIndex = START_WAVE_OPTIONS.indexOf(this.progress.selectedStartWave);
+    const nextIndex = Math.max(
+      0,
+      Math.min(
+        START_WAVE_OPTIONS.indexOf(maxStartWave),
+        currentIndex + delta
+      )
+    );
+    this.progress.selectedStartWave = START_WAVE_OPTIONS[nextIndex];
+    this.saveProgress();
+    this.updateProgressUi();
+  }
+
+  cycleGameSpeed() {
+    const maxSpeed = getMaxGameSpeed(this.progress);
+    const available = GAME_SPEED_OPTIONS.filter((speed) => speed <= maxSpeed);
+    const currentIndex = available.indexOf(this.gameSpeed);
+    this.gameSpeed = available[(currentIndex + 1) % available.length] || 1;
+    this.updateProgressUi();
+  }
+
+  spendTokens(cost, applyPurchase) {
+    if (this.progress.tokens < cost) return;
+    this.progress.tokens -= cost;
+    applyPurchase();
+    this.saveProgress();
+    this.updateProgressUi();
+  }
+
+  getShopItems() {
+    const items = [];
+    const add = (id, title, detail, cost, bought, buy, blocked = false) => {
+      items.push({ id, title, detail, cost, bought, buy, blocked });
+    };
+
+    add(
+      'unlock-dart',
+      'Дротики',
+      'Новая быстрая пушка',
+      TOWER_UNLOCK_COSTS.dart,
+      this.progress.unlockedTowers.dart,
+      () => { this.progress.unlockedTowers.dart = true; }
+    );
+    add(
+      'unlock-barrel',
+      'Бочкомёт',
+      'Мины по дороге',
+      TOWER_UNLOCK_COSTS.barrel,
+      this.progress.unlockedTowers.barrel,
+      () => { this.progress.unlockedTowers.barrel = true; }
+    );
+
+    for (const [type, levels] of Object.entries(TOWER_LEVEL_COSTS)) {
+      for (const [levelText, cost] of Object.entries(levels)) {
+        const level = Number(levelText);
+        const towerUnlocked = this.progress.unlockedTowers[type];
+        const currentMax = this.progress.towerMaxLevel[type] || 1;
+        const titleByType = { cannon: 'Танк', dart: 'Дротики', barrel: 'Бочкомёт' };
+        add(
+          `${type}-level-${level}`,
+          `${titleByType[type]} ур. ${level}`,
+          'Разрешить прокачку',
+          cost,
+          currentMax >= level,
+          () => { this.progress.towerMaxLevel[type] = level; },
+          !towerUnlocked || currentMax < level - 1
+        );
+      }
+    }
+
+    add(
+      'berserk',
+      'Берсерк',
+      'Режим танка ур. 3',
+      BERSERK_UNLOCK_COST,
+      this.progress.berserkUnlocked,
+      () => { this.progress.berserkUnlocked = true; },
+      this.progress.towerMaxLevel.cannon < 3
+    );
+
+    const statTitles = {
+      damage: 'Урон',
+      range: 'Дальность',
+      economy: 'Стартовое золото',
+      lives: 'Прочность базы',
+    };
+    for (const [stat, title] of Object.entries(statTitles)) {
+      const level = this.progress.stats[stat];
+      add(
+        `stat-${stat}`,
+        `${title} ${level}/${STAT_MAX_LEVELS[stat]}`,
+        'Базовое усиление',
+        STAT_COSTS[stat][level],
+        level >= STAT_MAX_LEVELS[stat],
+        () => { this.progress.stats[stat]++; }
+      );
+    }
+
+    add(
+      'effect-cannon',
+      'Удар ядра',
+      'Танк ур. 3 бьёт областью',
+      EFFECT_COSTS.cannonImpact,
+      this.progress.effects.cannonImpact,
+      () => { this.progress.effects.cannonImpact = true; },
+      this.progress.towerMaxLevel.cannon < 3
+    );
+    add(
+      'effect-dart',
+      'Перегрев дротиков',
+      'Быстрее и сильнее',
+      EFFECT_COSTS.dartOvercharge,
+      this.progress.effects.dartOvercharge,
+      () => { this.progress.effects.dartOvercharge = true; },
+      !this.progress.unlockedTowers.dart
+    );
+    add(
+      'effect-barrel',
+      'Склад бомб',
+      '+10 мин и радиус',
+      EFFECT_COSTS.barrelStockpile,
+      this.progress.effects.barrelStockpile,
+      () => { this.progress.effects.barrelStockpile = true; },
+      !this.progress.unlockedTowers.barrel
+    );
+
+    const nextSpeedLevel = this.progress.speedLevel + 1;
+    add(
+      'speed',
+      `Ускорение x${GAME_SPEED_OPTIONS[nextSpeedLevel] || GAME_SPEED_OPTIONS.at(-1)}`,
+      'Кнопка скорости',
+      SPEED_LEVEL_COSTS[this.progress.speedLevel],
+      this.progress.speedLevel >= SPEED_LEVEL_COSTS.length,
+      () => { this.progress.speedLevel++; }
+    );
+
+    const nextStartWaveLevel = this.progress.startWaveLevel + 1;
+    add(
+      'start-wave',
+      `Старт с ${START_WAVE_OPTIONS[nextStartWaveLevel] || START_WAVE_OPTIONS.at(-1)}`,
+      'Пропуск ранних волн',
+      START_WAVE_COSTS[this.progress.startWaveLevel],
+      this.progress.startWaveLevel >= START_WAVE_COSTS.length,
+      () => {
+        this.progress.startWaveLevel++;
+        this.progress.selectedStartWave = getMaxStartWave(this.progress);
+      }
+    );
+
+    return items;
+  }
+
+  renderProgressShop() {
+    this.shopGridEl.innerHTML = '';
+    for (const item of this.getShopItems()) {
+      const el = document.createElement('div');
+      el.className = 'shop-item';
+      const state = item.bought ? 'Куплено' : item.blocked ? 'Закрыто' : `${item.cost} жет.`;
+      el.innerHTML = `<strong>${item.title}</strong><span>${item.detail}</span>`;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = state;
+      button.disabled = item.bought || item.blocked || this.progress.tokens < item.cost;
+      button.addEventListener('click', () => this.spendTokens(item.cost, item.buy));
+      el.appendChild(button);
+      this.shopGridEl.appendChild(el);
+    }
+  }
+
   generateDecorations() {
     this.decorations = [];
     if (this.availableDecorationKeys.length === 0) return;
@@ -1209,8 +1580,9 @@ class Game {
   }
 
   getWaveConfig() {
-    const enemiesPerWave = 6 + this.wave * 3;
-    const spawnInterval = Math.max(0.65, 2.4 - this.wave * 0.18);
+    const difficultyPower = this.getProgressPower();
+    const enemiesPerWave = Math.round((6 + this.wave * 3) * (1 + difficultyPower * 0.01));
+    const spawnInterval = Math.max(0.55, (2.4 - this.wave * 0.18) / (1 + difficultyPower * 0.012));
     const bluePackChance = Math.min(0.55, 0.12 + this.wave * 0.05);
     const sandChance = this.wave >= 3 ? Math.min(0.2, 0.04 + this.wave * 0.02) : 0;
     return { enemiesPerWave, spawnInterval, bluePackChance, sandChance };
@@ -1588,12 +1960,14 @@ class Game {
 
   showPurchaseRadial(slot) {
     const center = cellCenter(slot.col, slot.row);
-    const options = Object.entries(TOWER_TYPES).map(([type, cfg]) => ({
-      cost: cfg.cost,
-      icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
-      iconOffsetY: cfg.shopIconOffsetY || 0,
-      action: () => this.confirmPurchase(slot, type),
-    }));
+    const options = Object.entries(TOWER_TYPES)
+      .filter(([type]) => this.isTowerUnlocked(type))
+      .map(([type, cfg]) => ({
+        cost: cfg.cost,
+        icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
+        iconOffsetY: cfg.shopIconOffsetY || 0,
+        action: () => this.confirmPurchase(slot, type),
+      }));
     this.openRadialMenu(center.x, center.y, options, 'purchase');
   }
 
@@ -1663,16 +2037,42 @@ class Game {
     document.getElementById('gold').textContent = this.gold;
     document.getElementById('lives').textContent = this.lives;
     document.getElementById('wave').textContent = this.wave;
+    this.highestWaveThisRun = Math.max(this.highestWaveThisRun, this.wave);
     if (this.currentRadial) this.renderRadialMenu();
 
     if (this.lives <= 0 && !this.gameOver) {
       this.gameOver = true;
+      this.finishRun();
       this.closeRadialMenu();
       this.defeatMenu.classList.remove('hidden');
     }
   }
 
+  finishRun() {
+    if (this.runRewarded) return;
+    this.runRewarded = true;
+    const wavesPlayed = Math.max(1, this.highestWaveThisRun - this.runStartWave + 1);
+    const bestBonus = Math.max(0, this.highestWaveThisRun - this.progress.bestWave) * 18;
+    const reward = Math.round(12 + wavesPlayed * 10 + Math.min(80, this.highestWaveThisRun * 2) + bestBonus);
+    this.progress.tokens += reward;
+    this.progress.runs++;
+    this.progress.bestWave = Math.max(this.progress.bestWave, this.highestWaveThisRun);
+    this.saveProgress();
+    this.runRewardEl.textContent = `Жетоны: +${reward}`;
+    this.updateProgressUi();
+  }
+
   startGame() {
+    this.progress.selectedStartWave = Math.min(
+      this.progress.selectedStartWave,
+      getMaxStartWave(this.progress)
+    );
+    this.wave = this.progress.selectedStartWave;
+    this.runStartWave = this.wave;
+    this.highestWaveThisRun = this.wave;
+    this.gold = this.getStartingGold();
+    this.lives = this.getStartingLives();
+    this.runRewarded = false;
     this.started = true;
     this.mainMenu.classList.add('hidden');
     if (this.decorations.length === 0) {
@@ -1872,6 +2272,10 @@ class Game {
       explosion.draw(ctx);
     }
 
+    for (const tower of this.towers) {
+      tower.drawRank(ctx, images);
+    }
+
     if (!this.started) {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
       ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -1879,7 +2283,7 @@ class Game {
   }
 
   loop(timestamp) {
-    const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
+    const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1) * this.gameSpeed;
     this.lastTime = timestamp;
 
     this.update(dt);
