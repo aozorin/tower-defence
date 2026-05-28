@@ -1,92 +1,32 @@
-const GRID_COLS = 16;
-const GRID_ROWS = 10;
-const TILE_SIZE = 64;
+const GRID_COLS = 22;
+const GRID_ROWS = 14;
+const TILE_SIZE = 48;
 const ASSET_SCALE = TILE_SIZE / 128;
 const ASSET_BASE = 'assets/PNG/Retina/';
+const TANK_SPRITE_FACING = Math.PI / 2;
+const BULLET_FRONT_FLIP = Math.PI;
 
-const PATH_WAYPOINTS = [
-  { col: 0, row: 4 },
-  { col: 1, row: 4 },
-  { col: 2, row: 4 },
-  { col: 3, row: 4 },
-  { col: 4, row: 4 },
-  { col: 4, row: 5 },
-  { col: 4, row: 6 },
-  { col: 4, row: 7 },
-  { col: 5, row: 7 },
-  { col: 6, row: 7 },
-  { col: 7, row: 7 },
-  { col: 8, row: 7 },
-  { col: 9, row: 7 },
-  { col: 10, row: 7 },
-  { col: 11, row: 7 },
-  { col: 12, row: 7 },
-  { col: 12, row: 6 },
-  { col: 12, row: 5 },
-  { col: 13, row: 5 },
-  { col: 14, row: 5 },
-  { col: 15, row: 5 },
+const PATHS = [
+  [
+    { col: 10, row: 0 }, { col: 10, row: 2 }, { col: 7, row: 2 }, { col: 7, row: 4 },
+    { col: 14, row: 4 }, { col: 14, row: 6 }, { col: 9, row: 6 }, { col: 9, row: 8 },
+    { col: 16, row: 8 }, { col: 16, row: 10 }, { col: 11, row: 10 }, { col: 11, row: 13 },
+  ],
+  [
+    { col: 0, row: 6 }, { col: 3, row: 6 }, { col: 3, row: 3 }, { col: 8, row: 3 },
+    { col: 8, row: 7 }, { col: 5, row: 7 }, { col: 5, row: 9 }, { col: 13, row: 9 },
+    { col: 13, row: 11 }, { col: 11, row: 11 }, { col: 11, row: 13 },
+  ],
+  [
+    { col: 21, row: 5 }, { col: 18, row: 5 }, { col: 18, row: 2 }, { col: 12, row: 2 },
+    { col: 12, row: 5 }, { col: 17, row: 5 }, { col: 17, row: 7 }, { col: 8, row: 7 },
+    { col: 8, row: 10 }, { col: 11, row: 10 }, { col: 11, row: 13 },
+  ],
 ];
 
-const ROAD_CELLS = new Set(PATH_WAYPOINTS.map((p) => `${p.col},${p.row}`));
-
-const BUILD_SLOTS = [
-  { col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 },
-  { col: 3, row: 3 }, { col: 4, row: 3 },
-  { col: 0, row: 5 }, { col: 1, row: 5 }, { col: 2, row: 5 },
-  { col: 3, row: 5 },
-  { col: 5, row: 4 }, { col: 5, row: 5 },
-  { col: 3, row: 6 }, { col: 3, row: 7 },
-  { col: 5, row: 6 }, { col: 6, row: 6 },
-  { col: 7, row: 6 }, { col: 8, row: 6 }, { col: 9, row: 6 },
-  { col: 10, row: 6 }, { col: 11, row: 6 },
-  { col: 4, row: 8 }, { col: 5, row: 8 }, { col: 6, row: 8 },
-  { col: 7, row: 8 }, { col: 8, row: 8 }, { col: 9, row: 8 },
-  { col: 10, row: 8 }, { col: 11, row: 8 }, { col: 12, row: 8 },
-  { col: 11, row: 5 },
-  { col: 13, row: 6 },
-  { col: 13, row: 7 },
-  { col: 12, row: 4 }, { col: 13, row: 4 },
-  { col: 14, row: 4 }, { col: 15, row: 4 },
-  { col: 14, row: 6 },
-  { col: 15, row: 6 },
-  { col: 11, row: 4 },
-];
-
-const BUILD_SLOT_SET = new Set(BUILD_SLOTS.map((s) => `${s.col},${s.row}`));
 const PLUS_HIT_RADIUS = 22;
-
-function buildLevelTiles() {
-  const tiles = [];
-  for (let row = 0; row < GRID_ROWS; row++) {
-    tiles[row] = [];
-    for (let col = 0; col < GRID_COLS; col++) {
-      tiles[row][col] = 'tileGrass1';
-    }
-  }
-
-  for (let col = 0; col <= 3; col++) tiles[4][col] = 'tileGrass_roadEast';
-  tiles[4][4] = 'tileGrass_roadCornerLL';
-  for (let row = 5; row <= 6; row++) tiles[row][4] = 'tileGrass_roadNorth';
-  tiles[7][4] = 'tileGrass_roadCornerUR';
-  for (let col = 5; col <= 11; col++) tiles[7][col] = 'tileGrass_roadEast';
-  tiles[7][12] = 'tileGrass_roadCornerUL';
-  tiles[6][12] = 'tileGrass_roadNorth';
-  tiles[5][12] = 'tileGrass_roadCornerLR';
-  for (let col = 13; col <= 15; col++) tiles[5][col] = 'tileGrass_roadEast';
-
-  return tiles;
-}
-
-const LEVEL_TILES = buildLevelTiles();
-
-function isRoad(col, row) {
-  return ROAD_CELLS.has(`${col},${row}`);
-}
-
-function isBuildSlot(col, row) {
-  return BUILD_SLOT_SET.has(`${col},${row}`);
-}
+const BASE_COL = 11;
+const BASE_ROW = 13;
 
 function cellCenter(col, row) {
   return {
@@ -94,8 +34,6 @@ function cellCenter(col, row) {
     y: row * TILE_SIZE + TILE_SIZE / 2,
   };
 }
-
-const TANK_SPRITE_FACING = Math.PI / 2;
 
 function angleFromDirection(dx, dy) {
   return Math.atan2(dy, dx) - TANK_SPRITE_FACING;
@@ -194,6 +132,18 @@ const TOWER_TYPES = {
   },
 };
 
+const UI_ASSETS = {
+  arrowUp: 'assets/kenney_game-icons/PNG/White/2x/arrowUp.png',
+  medal: 'assets/kenney_game-icons/PNG/White/2x/medal1.png',
+};
+const RANK_ASSETS = {
+  silver1: 'assets/kenney_ranks-pack/PNG/Retina/Silver/rank001.png',
+  silver2: 'assets/kenney_ranks-pack/PNG/Retina/Silver/rank002.png',
+  silver3: 'assets/kenney_ranks-pack/PNG/Retina/Silver/rank003.png',
+  gold1: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank001.png',
+  gold2: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank002.png',
+  gold3: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank003.png',
+};
 const ASSET_KEYS = [
   'tileGrass1',
   'tileGrass_roadEast',
@@ -232,6 +182,52 @@ const ASSET_KEYS = [
   'shotOrange',
   'shotRed',
 ];
+
+function buildRoadCells() {
+  const set = new Set();
+  for (const path of PATHS) {
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i];
+      const b = path[i + 1];
+      if (a.col === b.col) {
+        const from = Math.min(a.row, b.row);
+        const to = Math.max(a.row, b.row);
+        for (let row = from; row <= to; row++) set.add(`${a.col},${row}`);
+      } else {
+        const from = Math.min(a.col, b.col);
+        const to = Math.max(a.col, b.col);
+        for (let col = from; col <= to; col++) set.add(`${col},${a.row}`);
+      }
+    }
+  }
+  set.add(`${BASE_COL},${BASE_ROW}`);
+  return set;
+}
+
+function getRoadNeighbors(col, row, roadCells) {
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  return dirs.filter(([dx, dy]) => roadCells.has(`${col + dx},${row + dy}`));
+}
+
+const ROAD_CELLS = buildRoadCells();
+const BUILD_SLOTS = [];
+for (let row = 1; row < GRID_ROWS - 1; row++) {
+  for (let col = 1; col < GRID_COLS - 1; col++) {
+    const key = `${col},${row}`;
+    if (ROAD_CELLS.has(key)) continue;
+    if (col === BASE_COL && row >= BASE_ROW - 1) continue;
+    if (getRoadNeighbors(col, row, ROAD_CELLS).length > 0) BUILD_SLOTS.push({ col, row });
+  }
+}
+const BUILD_SLOT_SET = new Set(BUILD_SLOTS.map((s) => `${s.col},${s.row}`));
+
+function isRoad(col, row) {
+  return ROAD_CELLS.has(`${col},${row}`);
+}
+
+function isBuildSlot(col, row) {
+  return BUILD_SLOT_SET.has(`${col},${row}`);
+}
 
 class Explosion {
   static FRAME_DURATION = 0.08;
@@ -384,7 +380,7 @@ class Enemy {
   static HEALER_MAX_SPEED_MULT = 1.9;
   static GOLD_REWARD_MULTIPLIER = 1.3;
 
-  constructor(game, type = 'red', pathOffset = 0, wave = 1) {
+  constructor(game, type = 'red', path = PATHS[0], pathOffset = 0, wave = 1) {
     const cfg = ENEMY_TYPES[type];
     this.game = game;
     this.type = type;
@@ -404,8 +400,9 @@ class Enemy {
     this.healTimer = 0;
     this.healFlashTimer = 0;
 
-    const start = cellCenter(PATH_WAYPOINTS[0].col, PATH_WAYPOINTS[0].row);
-    const next = cellCenter(PATH_WAYPOINTS[1].col, PATH_WAYPOINTS[1].row);
+    this.path = path;
+    const start = cellCenter(this.path[0].col, this.path[0].row);
+    const next = cellCenter(this.path[1].col, this.path[1].row);
     this.x = start.x;
     this.y = start.y;
     this.angle = angleFromDirection(next.x - start.x, next.y - start.y);
@@ -475,7 +472,7 @@ class Enemy {
       this.healFlashTimer = Math.max(0, this.healFlashTimer - dt);
     }
 
-    if (this.waypointIndex >= PATH_WAYPOINTS.length - 1) {
+    if (this.waypointIndex >= this.path.length - 1) {
       this.reachedEnd = true;
       this.alive = false;
       this.game.lives--;
@@ -484,12 +481,12 @@ class Enemy {
     }
 
     const from = cellCenter(
-      PATH_WAYPOINTS[this.waypointIndex].col,
-      PATH_WAYPOINTS[this.waypointIndex].row
+      this.path[this.waypointIndex].col,
+      this.path[this.waypointIndex].row
     );
     const to = cellCenter(
-      PATH_WAYPOINTS[this.waypointIndex + 1].col,
-      PATH_WAYPOINTS[this.waypointIndex + 1].row
+      this.path[this.waypointIndex + 1].col,
+      this.path[this.waypointIndex + 1].row
     );
 
     const dx = to.x - from.x;
@@ -510,13 +507,13 @@ class Enemy {
 
     this.progress += advance;
 
-    while (this.progress >= 1 && this.waypointIndex < PATH_WAYPOINTS.length - 1) {
+    while (this.progress >= 1 && this.waypointIndex < this.path.length - 1) {
       this.progress -= 1;
       this.waypointIndex++;
-      if (this.waypointIndex >= PATH_WAYPOINTS.length - 1) {
+      if (this.waypointIndex >= this.path.length - 1) {
         const end = cellCenter(
-          PATH_WAYPOINTS[this.waypointIndex].col,
-          PATH_WAYPOINTS[this.waypointIndex].row
+          this.path[this.waypointIndex].col,
+          this.path[this.waypointIndex].row
         );
         this.x = end.x;
         this.y = end.y;
@@ -525,12 +522,12 @@ class Enemy {
     }
 
     const currentFrom = cellCenter(
-      PATH_WAYPOINTS[this.waypointIndex].col,
-      PATH_WAYPOINTS[this.waypointIndex].row
+      this.path[this.waypointIndex].col,
+      this.path[this.waypointIndex].row
     );
     const currentTo = cellCenter(
-      PATH_WAYPOINTS[this.waypointIndex + 1].col,
-      PATH_WAYPOINTS[this.waypointIndex + 1].row
+      this.path[this.waypointIndex + 1].col,
+      this.path[this.waypointIndex + 1].row
     );
 
     this.x = currentFrom.x + (currentTo.x - currentFrom.x) * this.progress;
@@ -645,7 +642,7 @@ class Projectile {
     }
 
     const move = this.speed * dt;
-    this.flightAngle = Math.atan2(dy, dx) - TANK_SPRITE_FACING;
+    this.flightAngle = Math.atan2(dy, dx) - TANK_SPRITE_FACING + BULLET_FRONT_FLIP;
     this.x += (dx / dist) * move;
     this.y += (dy / dist) * move;
   }
@@ -660,11 +657,7 @@ class Projectile {
     const w = img.width * ASSET_SCALE * scale;
     const h = img.height * ASSET_SCALE * scale;
 
-    if (isDart || isBarrel) {
-      drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.flightAngle || 0);
-    } else {
-      ctx.drawImage(img, this.x - w / 2, this.y - h / 2, w, h);
-    }
+    drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.flightAngle || 0);
   }
 }
 
@@ -915,11 +908,13 @@ class Tower {
 
   getRandomRoadCellInRange() {
     const candidates = [];
-    for (const waypoint of PATH_WAYPOINTS) {
-      const center = cellCenter(waypoint.col, waypoint.row);
-      const dist = Math.hypot(center.x - this.x, center.y - this.y);
-      if (dist <= this.getRange()) {
-        candidates.push(waypoint);
+    for (const path of PATHS) {
+      for (const waypoint of path) {
+        const center = cellCenter(waypoint.col, waypoint.row);
+        const dist = Math.hypot(center.x - this.x, center.y - this.y);
+        if (dist <= this.getRange()) {
+          candidates.push(waypoint);
+        }
       }
     }
     if (candidates.length === 0) return null;
@@ -977,6 +972,21 @@ class Tower {
     const w = img.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
     const h = img.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
+    const rankImg = images[`silver${Math.min(3, this.level)}`];
+    if (rankImg) {
+      const rw = rankImg.width * 0.65;
+      const rh = rankImg.height * 0.65;
+      ctx.drawImage(rankImg, this.x - rw / 2, this.y - h * 0.55 - rh, rw, rh);
+    }
+    if (this.berserkLevel > 0) {
+      const key = `gold${Math.min(3, this.berserkLevel)}`;
+      const br = images[key];
+      if (br) {
+        const rw = br.width * 0.55;
+        const rh = br.height * 0.55;
+        ctx.drawImage(br, this.x + w * 0.2, this.y - h * 0.55 - rh * 0.8, rw, rh);
+      }
+    }
     this.drawHudBars(ctx);
   }
 }
@@ -1005,49 +1015,35 @@ class Game {
     this.waveActive = false;
     this.bossSpawned = false;
     this.gameOver = false;
+    this.isPaused = false;
+    this.started = false;
+    this.waveBannerTimer = 0;
+    this.currentRadial = null;
     this.selectedTower = null;
 
     this.lastTime = 0;
     this.hintMessage = '';
     this.hintTimer = 0;
-    this.pendingPurchase = null;
-
-    this.upgradeModal = document.getElementById('upgrade-modal');
-    this.upgradeLevelEl = document.getElementById('upgrade-level');
-    this.upgradeGoldEl = document.getElementById('upgrade-modal-gold');
-    this.upgradeErrorEl = document.getElementById('upgrade-error');
-    this.upgradeBulletsEl = document.getElementById('upgrade-bullets-preview');
-    this.upgradeConfirmBtn = document.getElementById('upgrade-confirm');
-    this.upgradeCloseBtn = document.getElementById('upgrade-close');
-
-    this.berserkSection = document.getElementById('berserk-section');
-    this.berserkLevelEl = document.getElementById('berserk-level');
-    this.berserkBulletsEl = document.getElementById('berserk-bullets-preview');
-    this.berserkInfoEl = document.getElementById('berserk-info');
-    this.berserkErrorEl = document.getElementById('berserk-error');
-    this.berserkConfirmBtn = document.getElementById('berserk-confirm');
-
-    this.modal = document.getElementById('purchase-modal');
-    this.modalGoldEl = document.getElementById('modal-gold');
-    this.modalErrorEl = document.getElementById('modal-error');
-    this.towerShopEl = document.getElementById('tower-shop');
-    this.purchaseCancelBtn = document.getElementById('purchase-cancel');
+    this.hintEl = document.getElementById('hint-strip');
+    this.waveBannerEl = document.getElementById('wave-banner');
+    this.mainMenu = document.getElementById('main-menu');
+    this.pauseMenu = document.getElementById('pause-menu');
+    this.defeatMenu = document.getElementById('defeat-menu');
+    this.radialMenu = document.getElementById('radial-menu');
+    this.pauseBtn = document.getElementById('pause-btn');
 
     this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
-    this.purchaseCancelBtn.addEventListener('click', () => this.closePurchaseModal());
-    this.modal.querySelector('.modal-backdrop').addEventListener('click', () =>
-      this.closePurchaseModal()
-    );
-    this.upgradeConfirmBtn.addEventListener('click', () => this.confirmUpgrade());
-    this.berserkConfirmBtn.addEventListener('click', () => this.confirmBerserkUpgrade());
-    this.upgradeCloseBtn.addEventListener('click', () => this.closeUpgradeModal());
-    this.upgradeModal.querySelector('.modal-backdrop').addEventListener('click', () =>
-      this.closeUpgradeModal()
-    );
+    this.pauseBtn.addEventListener('click', () => this.togglePause());
+    document.getElementById('start-btn').addEventListener('click', () => this.startGame());
+    document.getElementById('resume-btn').addEventListener('click', () => this.togglePause(false));
+    document.getElementById('restart-btn').addEventListener('click', () => this.restart());
+    document.getElementById('restart-from-pause-btn').addEventListener('click', () => this.restart());
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.started && !this.gameOver) this.togglePause();
+    });
 
     this.loadAssets().then(() => {
       this.updateHud();
-      this.startWave();
       this.lastTime = performance.now();
       requestAnimationFrame((t) => this.loop(t));
     });
@@ -1060,7 +1056,13 @@ class Game {
         return [key, img];
       })
     );
-    this.images = Object.fromEntries(entries);
+    const uiEntries = await Promise.all(
+      Object.entries(UI_ASSETS).map(async ([k, src]) => [k, await loadImage(src)])
+    );
+    const rankEntries = await Promise.all(
+      Object.entries(RANK_ASSETS).map(async ([k, src]) => [k, await loadImage(src)])
+    );
+    this.images = Object.fromEntries([...entries, ...uiEntries, ...rankEntries]);
   }
 
   getWaveConfig() {
@@ -1081,15 +1083,18 @@ class Game {
     this.enemiesSpawned = 0;
     this.spawnTimer = 0;
     this.bossSpawned = false;
+    this.showWaveBanner(`ВОЛНА ${this.wave}`);
   }
 
   spawnRedEnemy() {
-    this.enemies.push(new Enemy(this, 'red', 0, this.wave));
+    const path = PATHS[Math.floor(Math.random() * PATHS.length)];
+    this.enemies.push(new Enemy(this, 'red', path, 0, this.wave));
     this.enemiesSpawned++;
   }
 
   spawnSandEnemy() {
-    this.enemies.push(new Enemy(this, 'sand', 0, this.wave));
+    const path = PATHS[Math.floor(Math.random() * PATHS.length)];
+    this.enemies.push(new Enemy(this, 'sand', path, 0, this.wave));
     this.enemiesSpawned++;
   }
 
@@ -1103,13 +1108,15 @@ class Game {
     }
 
     for (let i = 0; i < count; i++) {
-      this.enemies.push(new Enemy(this, 'blue', -i * 0.07, this.wave));
+      const path = PATHS[Math.floor(Math.random() * PATHS.length)];
+      this.enemies.push(new Enemy(this, 'blue', path, -i * 0.07, this.wave));
     }
     this.enemiesSpawned += count;
   }
 
   spawnBoss() {
-    this.enemies.push(new Enemy(this, 'dark', 0, this.wave));
+    const path = PATHS[Math.floor(Math.random() * PATHS.length)];
+    this.enemies.push(new Enemy(this, 'dark', path, 0, this.wave));
     this.bossSpawned = true;
   }
 
@@ -1155,159 +1162,10 @@ class Game {
 
   selectTower(tower) {
     this.selectedTower = tower;
-    this.closePurchaseModal();
   }
 
   deselectTower() {
     this.selectedTower = null;
-  }
-
-  openUpgradeModal(tower) {
-    this.selectTower(tower);
-
-    const isCannonMaxLevel = tower.type === 'cannon' && tower.level >= 3;
-
-    document.getElementById('upgrade-title').textContent =
-      `Прокачка: ${tower.config.label}`;
-    this.upgradeLevelEl.textContent = `${tower.level} / 3`;
-    this.upgradeGoldEl.textContent = this.gold;
-    this.upgradeErrorEl.classList.add('hidden');
-    this.upgradeErrorEl.textContent = '';
-    this.renderUpgradePreview(tower);
-
-    if (isCannonMaxLevel) {
-      this.upgradeConfirmBtn.classList.add('hidden');
-      this.renderBerserkPreview(tower);
-    } else {
-      this.upgradeConfirmBtn.classList.remove('hidden');
-      this.berserkSection.classList.add('hidden');
-
-      const cost = tower.getUpgradeCost();
-      if (!tower.canUpgrade()) {
-        this.upgradeConfirmBtn.textContent = 'Макс. уровень';
-        this.upgradeConfirmBtn.disabled = true;
-      } else {
-        this.upgradeConfirmBtn.textContent = `Улучшить (${cost} gold)`;
-        this.upgradeConfirmBtn.disabled = this.gold < cost;
-        if (this.gold < cost) {
-          this.upgradeErrorEl.textContent = 'Недостаточно золота';
-          this.upgradeErrorEl.classList.remove('hidden');
-        }
-      }
-    }
-
-    this.upgradeModal.classList.remove('hidden');
-    this.upgradeModal.setAttribute('aria-hidden', 'false');
-  }
-
-  renderUpgradePreview(tower) {
-    const labels = { 1: 'Ур. 1', 2: 'Ур. 2', 3: 'Ур. 3' };
-    this.upgradeBulletsEl.innerHTML = '';
-
-    for (let lvl = 1; lvl <= 3; lvl++) {
-      const key = tower.config.projectiles[lvl];
-      const slot = document.createElement('div');
-      slot.className = 'bullet-slot';
-      if (lvl < tower.level) slot.classList.add('unlocked');
-      if (lvl === tower.level) slot.classList.add('active');
-
-      const img = document.createElement('img');
-      img.src = ASSET_BASE + `${key}.png`;
-      img.alt = labels[lvl];
-
-      const label = document.createElement('span');
-      label.textContent = labels[lvl];
-
-      slot.appendChild(img);
-      slot.appendChild(label);
-      this.upgradeBulletsEl.appendChild(slot);
-    }
-  }
-
-  renderBerserkPreview(tower) {
-    const labels = { 0: '—', 1: 'Ур.1', 2: 'Ур.2', 3: 'Ур.3', 4: 'Ур.4' };
-    this.berserkSection.classList.remove('hidden');
-    this.berserkLevelEl.textContent = tower.berserkLevel;
-    this.berserkBulletsEl.innerHTML = '';
-
-    for (let lvl = 1; lvl <= 4; lvl++) {
-      const key = tower.config.berserk.projectiles[lvl];
-      const slot = document.createElement('div');
-      slot.className = 'bullet-slot';
-      if (lvl <= tower.berserkLevel) slot.classList.add('unlocked');
-      if (lvl === tower.berserkLevel + 1 && tower.berserkLevel < 4) slot.classList.add('active');
-
-      const img = document.createElement('img');
-      img.src = ASSET_BASE + `${key}.png`;
-      img.alt = labels[lvl];
-
-      const label = document.createElement('span');
-      label.textContent = labels[lvl];
-
-      slot.appendChild(img);
-      slot.appendChild(label);
-      this.berserkBulletsEl.appendChild(slot);
-    }
-
-    if (tower.canUpgradeBerserk()) {
-      const cost = tower.getBerserkUpgradeCost();
-      this.berserkInfoEl.textContent = `Берсерк ур.${tower.berserkLevel + 1}: ${cost} gold`;
-      this.berserkConfirmBtn.disabled = this.gold < cost;
-      this.berserkConfirmBtn.textContent = `Улучшить берсерк (${cost} gold)`;
-      this.berserkErrorEl.classList.add('hidden');
-      if (this.gold < cost) {
-        this.berserkErrorEl.textContent = 'Недостаточно золота';
-        this.berserkErrorEl.classList.remove('hidden');
-      }
-    } else {
-      this.berserkInfoEl.textContent = 'Максимальный уровень берсерка';
-      this.berserkConfirmBtn.disabled = true;
-      this.berserkConfirmBtn.textContent = 'Макс. берсерк';
-      this.berserkErrorEl.classList.add('hidden');
-    }
-  }
-
-  closeUpgradeModal() {
-    this.upgradeModal.classList.add('hidden');
-    this.upgradeModal.setAttribute('aria-hidden', 'true');
-    this.berserkSection.classList.add('hidden');
-    this.upgradeConfirmBtn.classList.remove('hidden');
-  }
-
-  confirmUpgrade() {
-    const tower = this.selectedTower;
-    if (!tower || !tower.canUpgrade() || this.gameOver) return;
-
-    const cost = tower.getUpgradeCost();
-    if (this.gold < cost) {
-      this.upgradeErrorEl.textContent = 'Недостаточно золота';
-      this.upgradeErrorEl.classList.remove('hidden');
-      this.upgradeConfirmBtn.disabled = true;
-      return;
-    }
-
-    this.gold -= cost;
-    tower.upgrade();
-    this.updateHud();
-    this.openUpgradeModal(tower);
-  }
-
-  confirmBerserkUpgrade() {
-    const tower = this.selectedTower;
-    if (!tower || !tower.canUpgradeBerserk() || this.gameOver) return;
-
-    const cost = tower.getBerserkUpgradeCost();
-    if (this.gold < cost) {
-      this.berserkErrorEl.textContent = 'Недостаточно золота';
-      this.berserkErrorEl.classList.remove('hidden');
-      this.berserkConfirmBtn.disabled = true;
-      return;
-    }
-
-    this.gold -= cost;
-    tower.upgradeBerserk();
-    this.updateHud();
-    this.openUpgradeModal(tower);
   }
 
   getPlusAt(x, y) {
@@ -1323,102 +1181,142 @@ class Game {
     return null;
   }
 
-  renderTowerShop() {
-    this.towerShopEl.innerHTML = '';
+  openRadialMenu(x, y, options) {
+    this.currentRadial = { x, y, options };
+    this.renderRadialMenu();
+  }
 
-    for (const typeId of Object.keys(TOWER_TYPES)) {
-      const cfg = TOWER_TYPES[typeId];
+  closeRadialMenu() {
+    this.currentRadial = null;
+    this.radialMenu.classList.add('hidden');
+  }
+
+  renderRadialMenu() {
+    if (!this.currentRadial) return;
+    this.radialMenu.innerHTML = '';
+    const { x, y, options } = this.currentRadial;
+    const gameX = x / this.canvas.width;
+    let dir = 0;
+    if (gameX < 0.24) dir = 1;
+    if (gameX > 0.76) dir = -1;
+    this.radialMenu.style.left = `${(x / this.canvas.width) * 100}%`;
+    this.radialMenu.style.top = `${(y / this.canvas.height) * 100}%`;
+
+    options.forEach((option, idx) => {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'tower-choice';
-      btn.disabled = this.gold < cfg.cost;
-
-      const img = document.createElement('img');
-      img.src = ASSET_BASE + `${cfg.shopSprite}.png`;
-      img.alt = cfg.label;
-
-      const name = document.createElement('span');
-      name.className = 'tower-name';
-      name.textContent = cfg.label;
-
-      const cost = document.createElement('span');
-      cost.className = 'tower-cost';
-      cost.textContent = `${cfg.cost} gold`;
-
-      const desc = document.createElement('span');
-      desc.className = 'tower-desc';
-      desc.textContent = cfg.description;
-
-      btn.appendChild(img);
-      btn.appendChild(name);
-      btn.appendChild(cost);
-      btn.appendChild(desc);
-      btn.addEventListener('click', () => this.confirmPurchase(typeId));
-
-      this.towerShopEl.appendChild(btn);
-    }
+      btn.className = 'radial-option';
+      const affordable = this.gold >= option.cost;
+      if (!affordable) btn.classList.add('disabled');
+      const dx = dir * 84 * (idx + 1);
+      const dy = -80 - idx * 56;
+      btn.style.transform = `translate(${dx}px, ${dy}px)`;
+      btn.innerHTML = `<img src="${option.icon}" alt=""><span class="cost">${option.cost}</span>`;
+      btn.addEventListener('click', () => {
+        if (this.gold < option.cost) {
+          this.showHint('Нужно больше золота');
+          return;
+        }
+        option.action();
+      });
+      this.radialMenu.appendChild(btn);
+    });
+    this.radialMenu.classList.remove('hidden');
   }
 
-  openPurchaseModal(slot) {
-    this.deselectTower();
-    this.closeUpgradeModal();
-    this.pendingPurchase = { col: slot.col, row: slot.row };
-    this.modalGoldEl.textContent = this.gold;
-    this.modalErrorEl.classList.add('hidden');
-    this.modalErrorEl.textContent = '';
-    this.renderTowerShop();
-
-    this.modal.classList.remove('hidden');
-    this.modal.setAttribute('aria-hidden', 'false');
-  }
-
-  closePurchaseModal() {
-    this.pendingPurchase = null;
-    this.modal.classList.add('hidden');
-    this.modal.setAttribute('aria-hidden', 'true');
-  }
-
-  confirmPurchase(towerType) {
-    if (!this.pendingPurchase || this.gameOver) return;
-
-    const { col, row } = this.pendingPurchase;
+  confirmPurchase(slot, towerType) {
+    if (this.gameOver) return;
+    const { col, row } = slot;
     const cfg = TOWER_TYPES[towerType];
 
     if (!cfg || !isBuildSlot(col, row) || this.hasTowerAt(col, row)) {
-      this.closePurchaseModal();
+      this.closeRadialMenu();
       return;
     }
 
     if (this.gold < cfg.cost) {
-      this.modalErrorEl.textContent = 'Недостаточно золота';
-      this.modalErrorEl.classList.remove('hidden');
-      this.renderTowerShop();
+      this.showHint('Недостаточно золота');
       return;
     }
 
     this.gold -= cfg.cost;
     this.towers.push(new Tower(col, row, this, towerType));
     this.updateHud();
-    this.closePurchaseModal();
+    this.closeRadialMenu();
+  }
+
+  upgradeTower(tower) {
+    if (!tower.canUpgrade()) return;
+    const cost = tower.getUpgradeCost();
+    if (this.gold < cost) return;
+    this.gold -= cost;
+    tower.upgrade();
+    this.updateHud();
+    this.renderRadialMenu();
+  }
+
+  upgradeBerserk(tower) {
+    if (!tower.canUpgradeBerserk()) return;
+    const cost = tower.getBerserkUpgradeCost();
+    if (this.gold < cost) return;
+    this.gold -= cost;
+    tower.upgradeBerserk();
+    this.updateHud();
+    this.renderRadialMenu();
+  }
+
+  showPurchaseRadial(slot) {
+    const center = cellCenter(slot.col, slot.row);
+    const options = Object.entries(TOWER_TYPES).map(([type, cfg]) => ({
+      cost: cfg.cost,
+      icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
+      action: () => this.confirmPurchase(slot, type),
+    }));
+    this.openRadialMenu(center.x, center.y, options);
+  }
+
+  showUpgradeRadial(tower) {
+    const options = [];
+    if (tower.canUpgrade()) {
+      options.push({
+        cost: tower.getUpgradeCost(),
+        icon: 'assets/kenney_game-icons/PNG/White/2x/arrowUp.png',
+        action: () => this.upgradeTower(tower),
+      });
+    }
+    if (tower.canUpgradeBerserk()) {
+      options.push({
+        cost: tower.getBerserkUpgradeCost(),
+        icon: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank001.png',
+        action: () => this.upgradeBerserk(tower),
+      });
+    }
+    if (options.length === 0) {
+      this.showHint('Максимальная прокачка');
+      this.closeRadialMenu();
+      return;
+    }
+    this.openRadialMenu(tower.x, tower.y, options);
   }
 
   onCanvasClick(e) {
-    if (this.gameOver) return;
+    if (this.gameOver || this.isPaused || !this.started) return;
 
     const { x, y } = this.canvasToGameCoords(e.clientX, e.clientY);
     const tower = this.getTowerAt(x, y);
 
     if (tower) {
-      this.openUpgradeModal(tower);
+      this.selectTower(tower);
+      this.showUpgradeRadial(tower);
       return;
     }
 
     this.deselectTower();
-    this.closeUpgradeModal();
+    this.closeRadialMenu();
 
     const slot = this.getPlusAt(x, y);
     if (slot) {
-      this.openPurchaseModal(slot);
+      this.showPurchaseRadial(slot);
     }
   }
 
@@ -1440,7 +1338,7 @@ class Game {
       ctx.stroke();
 
       ctx.fillStyle = '#f4d03f';
-      ctx.font = 'bold 36px system-ui, sans-serif';
+      ctx.font = 'bold 28px "Pixelify Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('+', center.x, center.y);
@@ -1449,26 +1347,61 @@ class Game {
 
   showHint(message) {
     this.hintMessage = message;
-    this.hintTimer = 2;
+    this.hintTimer = 1.2;
+    this.hintEl.textContent = message;
+    this.hintEl.classList.remove('hidden');
+  }
+
+  showWaveBanner(text) {
+    this.waveBannerEl.textContent = text;
+    this.waveBannerEl.classList.remove('hidden');
+    this.waveBannerTimer = 1.3;
   }
 
   updateHud() {
     document.getElementById('gold').textContent = this.gold;
     document.getElementById('lives').textContent = this.lives;
     document.getElementById('wave').textContent = this.wave;
+    if (this.currentRadial) this.renderRadialMenu();
 
     if (this.lives <= 0 && !this.gameOver) {
       this.gameOver = true;
-      this.showHint('Игра окончена');
+      this.closeRadialMenu();
+      this.defeatMenu.classList.remove('hidden');
     }
   }
 
+  startGame() {
+    this.started = true;
+    this.mainMenu.classList.add('hidden');
+    this.startWave();
+  }
+
+  togglePause(force) {
+    if (!this.started || this.gameOver) return;
+    this.isPaused = typeof force === 'boolean' ? force : !this.isPaused;
+    this.pauseMenu.classList.toggle('hidden', !this.isPaused);
+    if (this.isPaused) this.closeRadialMenu();
+  }
+
+  restart() {
+    window.location.reload();
+  }
+
   update(dt) {
-    if (this.gameOver) return;
+    if (!this.started || this.gameOver || this.isPaused) return;
 
     if (this.hintTimer > 0) {
       this.hintTimer -= dt;
-      if (this.hintTimer <= 0) this.hintMessage = '';
+      if (this.hintTimer <= 0) {
+        this.hintMessage = '';
+        this.hintEl.classList.add('hidden');
+      }
+    }
+
+    if (this.waveBannerTimer > 0) {
+      this.waveBannerTimer -= dt;
+      if (this.waveBannerTimer <= 0) this.waveBannerEl.classList.add('hidden');
     }
 
     if (this.waveActive && this.enemiesSpawned < this.enemiesPerWave) {
@@ -1494,7 +1427,7 @@ class Game {
         this.updateHud();
         setTimeout(() => {
           if (!this.gameOver) this.startWave();
-        }, 3000);
+        }, 1200);
       }
     }
 
@@ -1526,14 +1459,38 @@ class Game {
 
   drawMap() {
     const { ctx, images } = this;
-
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
-        const key = LEVEL_TILES[row][col];
+        let key = 'tileGrass1';
+        if (isRoad(col, row)) {
+          const n = isRoad(col, row - 1);
+          const s = isRoad(col, row + 1);
+          const w = isRoad(col - 1, row);
+          const e = isRoad(col + 1, row);
+          if ((n || s) && !(e || w)) key = 'tileGrass_roadNorth';
+          else if ((e || w) && !(n || s)) key = 'tileGrass_roadEast';
+          else if (n && e) key = 'tileGrass_roadCornerLL';
+          else if (n && w) key = 'tileGrass_roadCornerLR';
+          else if (s && e) key = 'tileGrass_roadCornerUL';
+          else if (s && w) key = 'tileGrass_roadCornerUR';
+          else key = 'tileGrass_roadEast';
+        }
         const img = images[key];
         ctx.drawImage(img, col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
       }
     }
+    const baseCenter = cellCenter(BASE_COL, BASE_ROW);
+    const baseW = TILE_SIZE * 1.8;
+    const baseH = TILE_SIZE * 1.1;
+    ctx.fillStyle = 'rgba(30, 70, 170, 0.65)';
+    ctx.fillRect(baseCenter.x - baseW / 2, baseCenter.y - baseH / 2, baseW, baseH);
+    ctx.strokeStyle = '#b8e8ff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(baseCenter.x - baseW / 2, baseCenter.y - baseH / 2, baseW, baseH);
+    ctx.fillStyle = '#fff';
+    ctx.font = '20px "Pixelify Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('БАЗА', baseCenter.x, baseCenter.y + 7);
   }
 
   draw() {
@@ -1567,22 +1524,9 @@ class Game {
       explosion.draw(ctx);
     }
 
-    if (this.hintMessage) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.fillRect(0, this.canvas.height - 36, this.canvas.width, 36);
-      ctx.fillStyle = '#fff';
-      ctx.font = '16px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(this.hintMessage, this.canvas.width / 2, this.canvas.height - 12);
-    }
-
-    if (this.gameOver) {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    if (!this.started) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
       ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 48px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Game Over', this.canvas.width / 2, this.canvas.height / 2);
     }
   }
 

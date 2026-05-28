@@ -7,50 +7,53 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="game-wrapper">
+  <div id="game-root">
+    <canvas id="game" width="1056" height="672"></canvas>
+
     <div id="hud">
-      <span>Gold: <strong id="gold">0</strong></span>
-      <span>Lives: <strong id="lives">0</strong></span>
-      <span>Wave: <strong id="wave">1</strong></span>
-    </div>
-    <canvas id="game" width="1024" height="640"></canvas>
-    <p class="hint">«+» — выбор башни · клик по башне — радиус и прокачка</p>
-  </div>
-
-  <div id="upgrade-modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content modal-content-wide" role="dialog" aria-labelledby="upgrade-title">
-      <h2 id="upgrade-title">Прокачка башни</h2>
-      <p class="modal-level">Уровень: <strong id="upgrade-level">1</strong> / 3</p>
-      <div class="upgrade-bullets" id="upgrade-bullets-preview"></div>
-      <p class="modal-balance">У вас: <strong id="upgrade-modal-gold">0</strong> золота</p>
-      <p id="upgrade-error" class="modal-error hidden"></p>
-      <div id="berserk-section" class="hidden">
-        <hr>
-        <p class="modal-level">Берсерк: <strong id="berserk-level">0</strong> / 4</p>
-        <div class="upgrade-bullets" id="berserk-bullets-preview"></div>
-        <p id="berserk-info" class="modal-balance"></p>
-        <p id="berserk-error" class="modal-error hidden"></p>
-        <div class="modal-buttons">
-          <button type="button" id="berserk-confirm">Улучшить берсерк</button>
-        </div>
+      <div class="hud-pill">
+        <img src="assets/kenney_game-icons/PNG/White/2x/medal1.png" alt="Gold">
+        <span id="gold">0</span>
       </div>
-      <div class="modal-buttons">
-        <button type="button" id="upgrade-confirm">Улучшить</button>
-        <button type="button" id="upgrade-close">Закрыть</button>
+      <div class="hud-pill">
+        <img src="assets/kenney_game-icons/PNG/White/2x/power.png" alt="HP">
+        <span id="lives">0</span>
+      </div>
+      <div class="hud-pill">
+        <img src="assets/kenney_game-icons/PNG/White/2x/leaderboardsSimple.png" alt="Wave">
+        <span id="wave">1</span>
+      </div>
+      <button id="pause-btn" type="button" class="hud-pause">
+        <img src="assets/kenney_game-icons/PNG/White/2x/pause.png" alt="Pause">
+      </button>
+    </div>
+
+    <div id="wave-banner" class="overlay-message hidden"></div>
+    <div id="hint-strip" class="hint-strip hidden"></div>
+
+    <div id="radial-menu" class="radial-menu hidden" aria-hidden="true"></div>
+
+    <div id="main-menu" class="screen-menu">
+      <div class="menu-panel">
+        <h1>Tank Defence</h1>
+        <p>Три маршрута. Защити базу у нижней границы.</p>
+        <button id="start-btn" type="button">Начать игру</button>
       </div>
     </div>
-  </div>
 
-  <div id="purchase-modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content modal-content-wide" role="dialog" aria-labelledby="purchase-title">
-      <h2 id="purchase-title">Выберите башню</h2>
-      <p class="modal-balance">У вас: <strong id="modal-gold">0</strong> золота</p>
-      <div class="tower-shop" id="tower-shop"></div>
-      <p id="modal-error" class="modal-error hidden"></p>
-      <div class="modal-buttons">
-        <button type="button" id="purchase-cancel">Отмена</button>
+    <div id="pause-menu" class="screen-menu hidden">
+      <div class="menu-panel">
+        <h2>Пауза</h2>
+        <button id="resume-btn" type="button">Продолжить</button>
+        <button id="restart-from-pause-btn" type="button">Заново</button>
+      </div>
+    </div>
+
+    <div id="defeat-menu" class="screen-menu hidden">
+      <div class="menu-panel">
+        <h2>Поражение</h2>
+        <p>База уничтожена.</p>
+        <button id="restart-btn" type="button">Играть снова</button>
       </div>
     </div>
   </div>
