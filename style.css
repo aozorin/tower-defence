@@ -155,7 +155,8 @@ body {
 
 #start-btn,
 #resume-btn,
-#restart-from-pause-btn {
+#restart-from-pause-btn,
+#restart-btn {
   color: #000;
 }
 

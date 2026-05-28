@@ -16,9 +16,27 @@ const PATHS = [
     { col: 11, row: 10 },
     { col: 11, row: 13 },
   ],
+  [
+    { col: 11, row: 0 },
+    { col: 11, row: 3 },
+    { col: 9, row: 3 },
+    { col: 9, row: 7 },
+    { col: 13, row: 7 },
+    { col: 13, row: 10 },
+    { col: 11, row: 10 },
+    { col: 11, row: 13 },
+  ],
+  [
+    { col: 21, row: 8 },
+    { col: 16, row: 8 },
+    { col: 16, row: 5 },
+    { col: 19, row: 5 },
+    { col: 19, row: 10 },
+    { col: 11, row: 10 },
+    { col: 11, row: 13 },
+  ],
 ];
 
-const PLUS_HIT_RADIUS = 22;
 const BASE_COL = 11;
 const BASE_ROW = 13;
 
@@ -150,8 +168,15 @@ const DECORATION_ASSETS = {
 const DECORATION_SPAWN_CHANCE = 0.24;
 const ASSET_KEYS = [
   'tileGrass1',
+  'tileSand1',
+  'tileSand2',
+  'tileGrass_transitionE',
+  'tileGrass_transitionN',
+  'tileGrass_transitionS',
+  'tileGrass_transitionW',
   'tileGrass_roadEast',
   'tileGrass_roadNorth',
+  'tileGrass_roadCrossing',
   'tileGrass_roadCornerUL',
   'tileGrass_roadCornerUR',
   'tileGrass_roadCornerLL',
@@ -231,6 +256,15 @@ function isRoad(col, row) {
 
 function isBuildSlot(col, row) {
   return BUILD_SLOT_SET.has(`${col},${row}`);
+}
+
+function getGrassTransitionKey(col, row) {
+  if (isRoad(col, row) || isBuildSlot(col, row)) return null;
+  if (isBuildSlot(col + 1, row)) return 'tileGrass_transitionE';
+  if (isBuildSlot(col - 1, row)) return 'tileGrass_transitionW';
+  if (isBuildSlot(col, row - 1)) return 'tileGrass_transitionN';
+  if (isBuildSlot(col, row + 1)) return 'tileGrass_transitionS';
+  return null;
 }
 
 class Explosion {
@@ -841,7 +875,7 @@ class Tower {
     }
 
     const target = this.findTarget();
-    if (target) {
+    if (target && this.type !== 'barrel') {
       this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
     }
 
@@ -978,8 +1012,8 @@ class Tower {
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
     const rankImg = images[`silver${Math.min(3, this.level)}`];
     if (rankImg) {
-      const rw = rankImg.width * 0.65;
-      const rh = rankImg.height * 0.65;
+      const rw = TILE_SIZE * 0.5;
+      const rh = rw * (rankImg.height / rankImg.width);
       ctx.drawImage(rankImg, this.x - rw / 2, this.y - h * 0.55 - rh, rw, rh);
     }
     if (this.berserkLevel > 0) {
@@ -1026,6 +1060,9 @@ class Game {
     this.selectedTower = null;
     this.decorations = [];
     this.availableDecorationKeys = [];
+    this.pathSpawnPlan = new Array(PATHS.length).fill(0);
+    this.pathSpawnRemaining = new Array(PATHS.length).fill(0);
+    this.pathFirstSpawned = new Array(PATHS.length).fill(false);
 
     this.lastTime = 0;
     this.hintMessage = '';
@@ -1109,6 +1146,48 @@ class Game {
     return { enemiesPerWave, spawnInterval, bluePackChance, sandChance };
   }
 
+  generatePathSpawnPlan(totalEnemies) {
+    const plan = new Array(PATHS.length).fill(0);
+    for (let i = 0; i < totalEnemies; i++) {
+      const idx = Math.floor(Math.random() * PATHS.length);
+      plan[idx]++;
+    }
+    return plan;
+  }
+
+  takePathForSpawn(groupSize = 1) {
+    const available = this.pathSpawnRemaining
+      .map((count, idx) => ({ count, idx }))
+      .filter((entry) => entry.count > 0);
+    if (available.length === 0) {
+      return Math.floor(Math.random() * PATHS.length);
+    }
+
+    const totalWeight = available.reduce((sum, entry) => sum + entry.count, 0);
+    let roll = Math.random() * totalWeight;
+    let selectedIdx = available[0].idx;
+    for (const entry of available) {
+      roll -= entry.count;
+      if (roll <= 0) {
+        selectedIdx = entry.idx;
+        break;
+      }
+    }
+
+    this.pathSpawnRemaining[selectedIdx] = Math.max(
+      0,
+      this.pathSpawnRemaining[selectedIdx] - Math.max(1, groupSize)
+    );
+    return selectedIdx;
+  }
+
+  getPathThreatLevel(remainingCount) {
+    if (remainingCount <= 0) return null;
+    if (remainingCount <= 4) return { label: 'МАЛО', color: '#2ecc71' };
+    if (remainingCount <= 8) return { label: 'СРЕДНЕ', color: '#f39c12' };
+    return { label: 'МНОГО', color: '#e74c3c' };
+  }
+
   startWave() {
     const config = this.getWaveConfig();
     this.enemiesPerWave = config.enemiesPerWave;
@@ -1119,18 +1198,25 @@ class Game {
     this.enemiesSpawned = 0;
     this.spawnTimer = 0;
     this.bossSpawned = false;
-    this.showWaveBanner(`ВОЛНА ${this.wave}`);
+    this.pathSpawnPlan = this.generatePathSpawnPlan(this.enemiesPerWave);
+    this.pathSpawnRemaining = [...this.pathSpawnPlan];
+    this.pathFirstSpawned = new Array(PATHS.length).fill(false);
+    this.showWaveBanner(`В0ЛНА ${this.wave}`);
   }
 
   spawnRedEnemy() {
-    const path = PATHS[Math.floor(Math.random() * PATHS.length)];
+    const pathIndex = this.takePathForSpawn(1);
+    const path = PATHS[pathIndex];
     this.enemies.push(new Enemy(this, 'red', path, 0, this.wave));
+    this.pathFirstSpawned[pathIndex] = true;
     this.enemiesSpawned++;
   }
 
   spawnSandEnemy() {
-    const path = PATHS[Math.floor(Math.random() * PATHS.length)];
+    const pathIndex = this.takePathForSpawn(1);
+    const path = PATHS[pathIndex];
     this.enemies.push(new Enemy(this, 'sand', path, 0, this.wave));
+    this.pathFirstSpawned[pathIndex] = true;
     this.enemiesSpawned++;
   }
 
@@ -1143,10 +1229,12 @@ class Game {
       return;
     }
 
+    const pathIndex = this.takePathForSpawn(count);
+    const path = PATHS[pathIndex];
     for (let i = 0; i < count; i++) {
-      const path = PATHS[Math.floor(Math.random() * PATHS.length)];
       this.enemies.push(new Enemy(this, 'blue', path, -i * 0.07, this.wave));
     }
+    this.pathFirstSpawned[pathIndex] = true;
     this.enemiesSpawned += count;
   }
 
@@ -1205,20 +1293,15 @@ class Game {
   }
 
   getPlusAt(x, y) {
-    for (const slot of BUILD_SLOTS) {
-      if (this.hasTowerAt(slot.col, slot.row)) continue;
-
-      const center = cellCenter(slot.col, slot.row);
-      const dist = Math.hypot(x - center.x, y - center.y);
-      if (dist <= PLUS_HIT_RADIUS) {
-        return slot;
-      }
-    }
-    return null;
+    const col = Math.floor(x / TILE_SIZE);
+    const row = Math.floor(y / TILE_SIZE);
+    if (!isBuildSlot(col, row)) return null;
+    if (this.hasTowerAt(col, row)) return null;
+    return { col, row };
   }
 
-  openRadialMenu(x, y, options) {
-    this.currentRadial = { x, y, options };
+  openRadialMenu(x, y, options, layout = 'default') {
+    this.currentRadial = { x, y, options, layout };
     this.renderRadialMenu();
   }
 
@@ -1230,7 +1313,7 @@ class Game {
   renderRadialMenu() {
     if (!this.currentRadial) return;
     this.radialMenu.innerHTML = '';
-    const { x, y, options } = this.currentRadial;
+    const { x, y, options, layout } = this.currentRadial;
     const gameX = x / this.canvas.width;
     let dir = 0;
     if (gameX < 0.24) dir = 1;
@@ -1239,17 +1322,47 @@ class Game {
     this.radialMenu.style.top = `${(y / this.canvas.height) * 100}%`;
 
     options.forEach((option, idx) => {
+      const cost = typeof option.getCost === 'function' ? option.getCost() : option.cost;
+      if (cost == null) return;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'radial-option';
-      const affordable = this.gold >= option.cost;
+      const affordable = this.gold >= cost;
       if (!affordable) btn.classList.add('disabled');
-      const dx = dir * 84 * (idx + 1);
-      const dy = -80 - idx * 56;
-      btn.style.transform = `translate(${dx}px, ${dy}px)`;
-      btn.innerHTML = `<img src="${option.icon}" alt=""><span class="cost">${option.cost}</span>`;
+      let dx = dir * 84 * (idx + 1);
+      let dy = -80 - idx * 56;
+      if (layout === 'upgrade') {
+        const compactOffsetsByCount = {
+          1: [{ x: 0, y: 0 }],
+          2: [{ x: -10, y: 8 }, { x: 10, y: 8 }],
+          3: [{ x: 0, y: -10 }, { x: -10, y: 10 }, { x: 10, y: 10 }],
+        };
+        const compactOffsets = compactOffsetsByCount[options.length] || compactOffsetsByCount[3];
+        const offset = compactOffsets[Math.min(idx, compactOffsets.length - 1)];
+        dx = offset.x;
+        dy = offset.y;
+        btn.style.transform = `translate(${dx}px, ${dy}px) scale(0.6)`;
+      } else if (options.length === 3) {
+        const triangleOffsets = [
+          { x: 20, y: -10 },
+          { x: 0, y: -30 },
+          { x: -20, y: -30 },
+        ];
+        dx = triangleOffsets[idx].x;
+        dy = triangleOffsets[idx].y;
+        btn.style.transform = `translate(${dx}px, ${dy}px) scale(0.6)`;
+      } else {
+        btn.style.transform = `translate(${dx}px, ${dy}px)`;
+      }
+      btn.innerHTML = `<img src="${option.icon}" alt=""><span class="cost">${cost}</span>`;
       btn.addEventListener('click', () => {
-        if (this.gold < option.cost) {
+        const currentCost = typeof option.getCost === 'function' ? option.getCost() : option.cost;
+        if (currentCost == null) {
+          this.showHint('Максимальная прокачка');
+          this.closeRadialMenu();
+          return;
+        }
+        if (this.gold < currentCost) {
           this.showHint('Нужно больше золота');
           return;
         }
@@ -1308,21 +1421,21 @@ class Game {
       icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
       action: () => this.confirmPurchase(slot, type),
     }));
-    this.openRadialMenu(center.x, center.y, options);
+    this.openRadialMenu(center.x, center.y, options, 'purchase');
   }
 
   showUpgradeRadial(tower) {
     const options = [];
     if (tower.canUpgrade()) {
       options.push({
-        cost: tower.getUpgradeCost(),
+        getCost: () => tower.getUpgradeCost(),
         icon: 'assets/kenney_game-icons/PNG/White/2x/arrowUp.png',
         action: () => this.upgradeTower(tower),
       });
     }
     if (tower.canUpgradeBerserk()) {
       options.push({
-        cost: tower.getBerserkUpgradeCost(),
+        getCost: () => tower.getBerserkUpgradeCost(),
         icon: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank001.png',
         action: () => this.upgradeBerserk(tower),
       });
@@ -1332,7 +1445,7 @@ class Game {
       this.closeRadialMenu();
       return;
     }
-    this.openRadialMenu(tower.x, tower.y, options);
+    this.openRadialMenu(tower.x, tower.y, options, 'upgrade');
   }
 
   onCanvasClick(e) {
@@ -1357,28 +1470,7 @@ class Game {
   }
 
   drawBuildSlots() {
-    const { ctx } = this;
-    const radius = TILE_SIZE / 2;
-
-    for (const slot of BUILD_SLOTS) {
-      if (this.hasTowerAt(slot.col, slot.row)) continue;
-
-      const center = cellCenter(slot.col, slot.row);
-
-      ctx.beginPath();
-      ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(244, 208, 63, 0.35)';
-      ctx.fill();
-      ctx.strokeStyle = '#f4d03f';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      ctx.fillStyle = '#f4d03f';
-      ctx.font = 'bold 28px "Pixelify Sans", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('+', center.x, center.y);
-    }
+    // Build slots are rendered as map sand tiles in drawMap().
   }
 
   showHint(message) {
@@ -1506,13 +1598,20 @@ class Game {
           const s = isRoad(col, row + 1);
           const w = isRoad(col - 1, row);
           const e = isRoad(col + 1, row);
+          const roadNeighborCount = (n ? 1 : 0) + (s ? 1 : 0) + (w ? 1 : 0) + (e ? 1 : 0);
           if ((n || s) && !(e || w)) key = 'tileGrass_roadNorth';
           else if ((e || w) && !(n || s)) key = 'tileGrass_roadEast';
-          else if (n && e) key = 'tileGrass_roadCornerLL';
-          else if (n && w) key = 'tileGrass_roadCornerLR';
-          else if (s && e) key = 'tileGrass_roadCornerUL';
-          else if (s && w) key = 'tileGrass_roadCornerUR';
+          else if (roadNeighborCount >= 3) key = 'tileGrass_roadCrossing';
+          else if (n && e) key = 'tileGrass_roadCornerUR';
+          else if (n && w) key = 'tileGrass_roadCornerUL';
+          else if (s && e) key = 'tileGrass_roadCornerLR';
+          else if (s && w) key = 'tileGrass_roadCornerLL';
           else key = 'tileGrass_roadEast';
+        } else if (isBuildSlot(col, row)) {
+          key = (col + row) % 2 === 0 ? 'tileSand1' : 'tileSand2';
+        } else {
+          const transition = getGrassTransitionKey(col, row);
+          if (transition) key = transition;
         }
         const img = images[key];
         ctx.drawImage(img, col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE);
@@ -1538,6 +1637,29 @@ class Game {
     ctx.font = '20px "Pixelify Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('БАЗА', baseCenter.x, baseCenter.y + 7);
+
+    for (let i = 0; i < PATHS.length; i++) {
+      if (this.pathFirstSpawned[i]) continue;
+      const threat = this.getPathThreatLevel(this.pathSpawnRemaining[i]);
+      if (!threat) continue;
+      const start = PATHS[i][0];
+      const center = cellCenter(start.col, start.row);
+      const markerY = center.y - TILE_SIZE * 0.8;
+
+      ctx.beginPath();
+      ctx.arc(center.x, markerY, 16, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(5, 8, 20, 0.8)';
+      ctx.fill();
+      ctx.strokeStyle = threat.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = threat.color;
+      ctx.font = 'bold 11px "Pixelify Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(threat.label, center.x, markerY + 1);
+    }
   }
 
   draw() {
