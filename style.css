@@ -137,8 +137,8 @@ body {
   padding: 28px;
   text-align: center;
   color: #000;
-  background: url('assets/kenney_ui-pack-space-expansion/PNG/Blue/Default/button_square_header_large_rectangle_screws.png')
-    center / 100% 100% no-repeat;
+  background: #d9ecff;
+  border: 3px solid #000;
 }
 
 .menu-panel h1,
