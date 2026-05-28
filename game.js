@@ -202,6 +202,12 @@ const PROGRESSION_DEFAULTS = {
   berserkUnlocked: false,
   speedLevel: 0,
   startWaveLevel: 0,
+  barrelTree: {
+    cooldownLevel: 0,
+    discountLevel: 0,
+    utilityLevel: 0,
+    berserkUnlock: { sniper: 0, deployer: 0, booster: 0 },
+  },
 };
 const STAT_MAX_LEVELS = { damage: 10, range: 10, economy: 10, lives: 10 };
 const STAT_COSTS = {
@@ -229,6 +235,14 @@ const EFFECT_COSTS = {
 const BERSERK_UNLOCK_COST = 420;
 const SPEED_LEVEL_COSTS = [120, 300];
 const START_WAVE_COSTS = [120, 220, 380, 650, 1100];
+const BARREL_TREE_COSTS = {
+  cooldown: [140, 240, 360, 520, 760],
+  discount: [160, 280, 430, 620, 900],
+  utility: [220, 340, 500, 760, 1080],
+  berserkSniper: [260, 400, 600, 900, 1300],
+  berserkDeployer: [260, 400, 600, 900, 1300],
+  berserkBooster: [260, 400, 600, 900, 1300],
+};
 
 function cloneProgressDefaults() {
   return JSON.parse(JSON.stringify(PROGRESSION_DEFAULTS));
@@ -895,6 +909,8 @@ class Tower {
     this.berserkWaitTimer = 0;
     this.isWaitingForBerserkEnemy = false;
     this.isBerserkActive = false;
+    this.barrelBerserkMode = null;
+    this.barrelBerserkLevels = { sniper: 0, deployer: 0, booster: 0 };
   }
 
   getRange() {
@@ -906,6 +922,8 @@ class Tower {
       range *= 2;
     }
     range *= this.game.getTowerRangeMultiplier?.(this.type) ?? 1;
+    const aura = this.game.getBoosterAuraForTower?.(this) ?? 0;
+    if (aura > 0) range *= 1 + aura * 0.5;
     return range;
   }
 
@@ -915,7 +933,16 @@ class Tower {
       dmg *= this.config.berserk.damageMultiplier[this.berserkLevel];
     }
     const progressMultiplier = this.game.getTowerDamageMultiplier?.(this.type) ?? 1;
-    return Math.round(dmg * Tower.DAMAGE_MULTIPLIER * progressMultiplier);
+    let result = Math.round(dmg * Tower.DAMAGE_MULTIPLIER * progressMultiplier);
+    if (this.type === 'barrel' && this.barrelBerserkMode === 'sniper') {
+      result = Math.round(result * (4 + this.barrelBerserkLevels.sniper * 0.8));
+    }
+    if (this.type === 'barrel' && this.barrelBerserkMode === 'deployer') {
+      result = Math.round(result * (1.7 + this.barrelBerserkLevels.deployer * 0.25));
+    }
+    const aura = this.game.getBoosterAuraForTower?.(this) ?? 0;
+    if (aura > 0) result = Math.round(result * (1 + aura));
+    return result;
   }
 
   getFireCooldown() {
@@ -930,6 +957,14 @@ class Tower {
     if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelStockpile')) {
       value *= 0.9;
     }
+    if (this.type === 'barrel') {
+      const cdLevel = this.game.progress.barrelTree.cooldownLevel || 0;
+      value *= Math.max(0.5, 1 - cdLevel * 0.1);
+      if (this.barrelBerserkMode === 'sniper') value *= 1.25;
+      if (this.barrelBerserkMode === 'deployer') value *= Math.max(0.32, 0.7 - this.barrelBerserkLevels.deployer * 0.06);
+    }
+    const aura = this.game.getBoosterAuraForTower?.(this) ?? 0;
+    if (aura > 0) value *= Math.max(0.55, 1 - aura * 0.45);
     return value;
   }
 
@@ -944,6 +979,9 @@ class Tower {
       }
       if (radius && this.type === 'barrel' && this.game.hasProgressEffect?.('barrelStockpile')) {
         radius += 8;
+      }
+      if (radius && this.type === 'barrel' && this.game.hasProgressEffect?.('barrelCluster')) {
+        radius += 10;
       }
       return radius;
     }
@@ -970,6 +1008,10 @@ class Tower {
     if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelNapalm')) {
       effects.poisonDps = Math.round(this.getDamage() * 0.4);
       effects.poisonDuration = 3;
+    }
+    if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelDeepBurn')) {
+      effects.poisonDps = Math.round(this.getDamage() * 0.55);
+      effects.poisonDuration = 4.5;
     }
     if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelSnare')) {
       effects.slowMultiplier = 0.58;
@@ -1015,6 +1057,26 @@ class Tower {
     return this.hasBerserk() && this.berserkLevel < 4;
   }
 
+  canUpgradeBarrelBerserk(mode) {
+    if (this.type !== 'barrel' || this.level < 3) return false;
+    const unlocked = this.game.progress.barrelTree.berserkUnlock[mode] || 0;
+    return unlocked > 0 && this.barrelBerserkLevels[mode] < unlocked && this.barrelBerserkLevels[mode] < 5;
+  }
+
+  getBarrelBerserkCost(mode) {
+    if (!this.canUpgradeBarrelBerserk(mode)) return null;
+    const next = this.barrelBerserkLevels[mode] + 1;
+    const base = [600, 1200, 2200, 3600, 5200][next - 1];
+    return Math.round(base * this.game.getBarrelDiscountMultiplier());
+  }
+
+  upgradeBarrelBerserk(mode) {
+    if (!this.canUpgradeBarrelBerserk(mode)) return false;
+    this.barrelBerserkMode = mode;
+    this.barrelBerserkLevels[mode]++;
+    return true;
+  }
+
   upgradeBerserk() {
     if (!this.canUpgradeBerserk()) return false;
     this.berserkLevel++;
@@ -1057,6 +1119,10 @@ class Tower {
   }
 
   update(dt) {
+    if (this.type === 'barrel' && this.barrelBerserkMode === 'booster' && this.barrelBerserkLevels.booster > 0) {
+      this.cooldown = 0;
+      return;
+    }
     if (this.config.berserk && this.berserkLevel > 0) {
       if (this.isBerserkActive) {
         this.berserkTimer -= dt;
@@ -1093,7 +1159,9 @@ class Tower {
       }
     }
 
-    const target = this.findTarget();
+    const target = this.type === 'barrel' && this.barrelBerserkMode === 'sniper'
+      ? this.findStrongestTarget()
+      : this.findTarget();
     if (target && this.type !== 'barrel') {
       this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
     }
@@ -1142,6 +1210,20 @@ class Tower {
             point.row
           )
         );
+        if (this.barrelBerserkMode === 'deployer' && this.barrelBerserkLevels.deployer >= 2) {
+          const extra = this.getRandomMineSpot(point);
+          this.game.mines.push(
+            new BarrelMine(
+              extra.x,
+              extra.y,
+              Math.round(this.getDamage() * 0.8),
+              this.getSplashRadius(),
+              this,
+              point.col,
+              point.row
+            )
+          );
+        }
       }
       this.cooldown = cooldown;
       return;
@@ -1188,6 +1270,22 @@ class Tower {
     }
 
     return nearest;
+  }
+
+  findStrongestTarget() {
+    let best = null;
+    let bestHp = -1;
+    const range = this.getRange() * 1.35;
+    for (const enemy of this.game.enemies) {
+      if (!enemy.alive) continue;
+      const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+      if (dist > range) continue;
+      if (enemy.hp > bestHp) {
+        bestHp = enemy.hp;
+        best = enemy;
+      }
+    }
+    return best;
   }
 
   getRandomRoadCellInRange(excludedCells = new Set()) {
@@ -1439,6 +1537,23 @@ class Game {
     return 1 + this.getProgressPower() * 0.006;
   }
 
+  getBoosterAuraForTower(targetTower) {
+    let bonus = 0;
+    for (const tower of this.towers) {
+      if (tower === targetTower) continue;
+      if (tower.type !== 'barrel') continue;
+      if (tower.barrelBerserkMode !== 'booster') continue;
+      const lvl = tower.barrelBerserkLevels.booster || 0;
+      if (lvl <= 0) continue;
+      const dist = Math.hypot(targetTower.x - tower.x, targetTower.y - tower.y);
+      const auraRange = tower.getRange() * 0.75;
+      if (dist <= auraRange) {
+        bonus = Math.max(bonus, 0.1 + lvl * 0.05);
+      }
+    }
+    return bonus;
+  }
+
   isTowerUnlocked(type) {
     return !!this.progress.unlockedTowers[type];
   }
@@ -1452,11 +1567,21 @@ class Game {
   }
 
   hasProgressEffect(effect) {
+    if (effect === 'barrelStockpile') return this.progress.barrelTree.utilityLevel >= 1;
+    if (effect === 'barrelNapalm') return this.progress.barrelTree.utilityLevel >= 2;
+    if (effect === 'barrelSnare') return this.progress.barrelTree.utilityLevel >= 3;
+    if (effect === 'barrelCluster') return this.progress.barrelTree.utilityLevel >= 4;
+    if (effect === 'barrelDeepBurn') return this.progress.barrelTree.utilityLevel >= 5;
     return !!this.progress.effects[effect];
   }
 
   getBarrelMineLimit() {
     return Tower.MAX_BARREL_MINES + (this.hasProgressEffect('barrelStockpile') ? 10 : 0);
+  }
+
+  getBarrelDiscountMultiplier() {
+    const lvl = this.progress.barrelTree.discountLevel || 0;
+    return Math.max(0.45, 1 - lvl * 0.08);
   }
 
   syncStartPreviewStats() {
@@ -1692,15 +1817,72 @@ class Game {
     }
 
     if (tab === 'barrel') {
-      add('effect-barrel', 'Склад бомб', 'лимит +10 мин, радиус +8, КД -10%', EFFECT_COSTS.barrelStockpile,
-        this.progress.effects.barrelStockpile, () => { this.progress.effects.barrelStockpile = true; },
-        !this.progress.unlockedTowers.barrel, 'Бочкомет');
-      add('effect-barrel-napalm', 'Напалм', 'дот: 3 сек, 40% от урона в сек.', EFFECT_COSTS.barrelNapalm,
-        this.progress.effects.barrelNapalm, () => { this.progress.effects.barrelNapalm = true; },
-        !this.progress.effects.barrelStockpile, 'Бочкомет');
-      add('effect-barrel-snare', 'Осколочная сеть', 'замедление до 58% скорости на 1.8 сек', EFFECT_COSTS.barrelSnare,
-        this.progress.effects.barrelSnare, () => { this.progress.effects.barrelSnare = true; },
-        !this.progress.effects.barrelNapalm, 'Бочкомет');
+      const b = this.progress.barrelTree;
+      const unlocked = this.progress.unlockedTowers.barrel;
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        const prev = lvl - 1;
+        add(
+          `barrel-cd-${lvl}`,
+          `КД ${lvl}/5`,
+          `кд: -${prev * 10}% -> -${lvl * 10}%`,
+          BARREL_TREE_COSTS.cooldown[lvl - 1],
+          b.cooldownLevel >= lvl,
+          () => { b.cooldownLevel = lvl; },
+          !unlocked || b.cooldownLevel < lvl - 1,
+          'КД'
+        );
+      }
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        const prev = lvl - 1;
+        add(
+          `barrel-discount-${lvl}`,
+          `Скидка ${lvl}/5`,
+          `скидка: -${prev * 8}% -> -${lvl * 8}%`,
+          BARREL_TREE_COSTS.discount[lvl - 1],
+          b.discountLevel >= lvl,
+          () => { b.discountLevel = lvl; },
+          !unlocked || b.discountLevel < lvl - 1,
+          'Скидка'
+        );
+      }
+      const utilityDetails = [
+        'Склад: +10 мин, радиус +8',
+        'Горение: 3 сек, 40% урона/сек',
+        'Замедление: 58% на 1.8 сек',
+        'Кассетный заряд: +1 взрыв',
+        'Термит: горение 4.5 сек, 55% урона/сек',
+      ];
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `barrel-utility-${lvl}`,
+          `Утилита ${lvl}/5`,
+          utilityDetails[lvl - 1],
+          BARREL_TREE_COSTS.utility[lvl - 1],
+          b.utilityLevel >= lvl,
+          () => { b.utilityLevel = lvl; },
+          !unlocked || b.utilityLevel < lvl - 1,
+          'Уникальная линия'
+        );
+      }
+      const berserkBranches = [
+        { key: 'sniper', title: 'Берсерк: Снайпер', costs: BARREL_TREE_COSTS.berserkSniper },
+        { key: 'deployer', title: 'Берсерк: Супердеплой', costs: BARREL_TREE_COSTS.berserkDeployer },
+        { key: 'booster', title: 'Берсерк: Мехабустер', costs: BARREL_TREE_COSTS.berserkBooster },
+      ];
+      for (const branch of berserkBranches) {
+        for (let lvl = 1; lvl <= 5; lvl++) {
+          add(
+            `barrel-berserk-${branch.key}-${lvl}`,
+            `${branch.title} ${lvl}/5`,
+            'Открывает уровень ветки для боевого апгрейда',
+            branch.costs[lvl - 1],
+            b.berserkUnlock[branch.key] >= lvl,
+            () => { b.berserkUnlock[branch.key] = lvl; },
+            !unlocked || b.berserkUnlock[branch.key] < lvl - 1,
+            branch.title
+          );
+        }
+      }
     }
 
     return items;
@@ -2081,14 +2263,12 @@ class Game {
       let dx = 0;
       let dy = -30;
       if (layout === 'upgrade') {
-        const upgradeOffsets = {
-          1: [{ x: 0, y: 2 }],
-          2: [{ x: -34, y: 2 }, { x: 34, y: 2 }],
-          3: [{ x: -34, y: -28 }, { x: 34, y: -28 }, { x: 0, y: 30 }],
-        };
-        const offset = (upgradeOffsets[options.length] || upgradeOffsets[3])[idx];
-        dx = offset.x;
-        dy = offset.y;
+        const cols = Math.min(3, Math.max(1, options.length));
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        const xStart = -((cols - 1) * 68) / 2;
+        dx = xStart + col * 68;
+        dy = -26 + row * 60;
       } else {
         const gap = 74;
         const total = options.length;
@@ -2125,12 +2305,15 @@ class Game {
       return;
     }
 
-    if (this.gold < cfg.cost) {
+    const buyCost = towerType === 'barrel'
+      ? Math.round(cfg.cost * this.getBarrelDiscountMultiplier())
+      : cfg.cost;
+    if (this.gold < buyCost) {
       this.showHint('Недостаточно золота');
       return;
     }
 
-    this.gold -= cfg.cost;
+    this.gold -= buyCost;
     this.towers.push(new Tower(col, row, this, towerType));
     this.updateHud();
     this.closeRadialMenu();
@@ -2138,7 +2321,10 @@ class Game {
 
   upgradeTower(tower) {
     if (!tower.canUpgrade()) return;
-    const cost = tower.getUpgradeCost();
+    const baseCost = tower.getUpgradeCost();
+    const cost = tower.type === 'barrel'
+      ? Math.round(baseCost * this.getBarrelDiscountMultiplier())
+      : baseCost;
     if (this.gold < cost) return;
     this.gold -= cost;
     tower.upgrade();
@@ -2165,12 +2351,23 @@ class Game {
     this.renderRadialMenu();
   }
 
+  upgradeBarrelBerserk(tower, mode) {
+    const cost = tower.getBarrelBerserkCost(mode);
+    if (cost == null || this.gold < cost) return;
+    this.gold -= cost;
+    tower.upgradeBarrelBerserk(mode);
+    this.updateHud();
+    this.renderRadialMenu();
+  }
+
   showPurchaseRadial(slot) {
     const center = cellCenter(slot.col, slot.row);
     const options = Object.entries(TOWER_TYPES)
       .filter(([type]) => this.isTowerUnlocked(type))
       .map(([type, cfg]) => ({
-        cost: cfg.cost,
+        cost: type === 'barrel'
+          ? Math.round(cfg.cost * this.getBarrelDiscountMultiplier())
+          : cfg.cost,
         icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
         iconOffsetY: cfg.shopIconOffsetY || 0,
         action: () => this.confirmPurchase(slot, type),
@@ -2182,7 +2379,13 @@ class Game {
     const options = [];
     if (tower.canUpgrade()) {
       options.push({
-        getCost: () => tower.getUpgradeCost(),
+        getCost: () => {
+          const base = tower.getUpgradeCost();
+          if (base == null) return null;
+          return tower.type === 'barrel'
+            ? Math.round(base * this.getBarrelDiscountMultiplier())
+            : base;
+        },
         icon: this.getTowerUpgradeIcon(tower),
         action: () => this.upgradeTower(tower),
       });
@@ -2193,6 +2396,21 @@ class Game {
         icon: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank001.png',
         action: () => this.upgradeBerserk(tower),
       });
+    }
+    if (tower.type === 'barrel' && tower.level >= 3) {
+      const barrelModes = [
+        { mode: 'sniper', icon: 'assets/kenney_game-icons/PNG/White/2x/target.png' },
+        { mode: 'deployer', icon: 'assets/kenney_game-icons/PNG/White/2x/warning.png' },
+        { mode: 'booster', icon: 'assets/kenney_game-icons/PNG/White/2x/power.png' },
+      ];
+      for (const entry of barrelModes) {
+        if (!tower.canUpgradeBarrelBerserk(entry.mode)) continue;
+        options.push({
+          getCost: () => tower.getBarrelBerserkCost(entry.mode),
+          icon: entry.icon,
+          action: () => this.upgradeBarrelBerserk(tower, entry.mode),
+        });
+      }
     }
     if (options.length === 0) {
       this.showHint('Максимальная прокачка');
