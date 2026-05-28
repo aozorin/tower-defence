@@ -204,6 +204,7 @@ const PROGRESSION_DEFAULTS = {
   startWaveLevel: 0,
   barrelTree: {
     cooldownLevel: 0,
+    damageLevel: 0,
     discountLevel: 0,
     utilityLevel: 0,
     berserkUnlock: { sniper: 0, deployer: 0, booster: 0 },
@@ -237,6 +238,7 @@ const SPEED_LEVEL_COSTS = [120, 300];
 const START_WAVE_COSTS = [120, 220, 380, 650, 1100];
 const BARREL_TREE_COSTS = {
   cooldown: [140, 240, 360, 520, 760],
+  damage: [150, 260, 390, 560, 820],
   discount: [160, 280, 430, 620, 900],
   utility: [220, 340, 500, 760, 1080],
   berserkSniper: [260, 400, 600, 900, 1300],
@@ -1520,6 +1522,7 @@ class Game {
     if (type === 'cannon' && this.progress.effects.cannonPierce) multiplier += 0.1;
     if (type === 'dart' && this.progress.effects.dartOvercharge) multiplier += 0.08;
     if (type === 'barrel' && this.progress.effects.barrelStockpile) multiplier += 0.05;
+    if (type === 'barrel') multiplier += (this.progress.barrelTree.damageLevel || 0) * 0.08;
     return multiplier;
   }
 
@@ -1830,6 +1833,19 @@ class Game {
           () => { b.cooldownLevel = lvl; },
           !unlocked || b.cooldownLevel < lvl - 1,
           'КД'
+        );
+      }
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        const prev = lvl - 1;
+        add(
+          `barrel-dmg-${lvl}`,
+          `Урон ${lvl}/5`,
+          `урон: +${prev * 8}% -> +${lvl * 8}%`,
+          BARREL_TREE_COSTS.damage[lvl - 1],
+          b.damageLevel >= lvl,
+          () => { b.damageLevel = lvl; },
+          !unlocked || b.damageLevel < lvl - 1,
+          'Урон'
         );
       }
       for (let lvl = 1; lvl <= 5; lvl++) {
