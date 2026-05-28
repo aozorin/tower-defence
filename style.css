@@ -309,6 +309,12 @@ body {
   cursor: default;
 }
 
+.shop-item button.bought {
+  color: #052108;
+  background: rgba(92, 226, 120, 0.95);
+  border: 2px solid #1f7a2e;
+}
+
 .radial-menu {
   position: absolute;
   z-index: 40;

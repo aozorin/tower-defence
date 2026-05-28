@@ -1954,6 +1954,7 @@ class Game {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = state;
+        if (item.bought) button.classList.add('bought');
         button.disabled = item.bought || item.blocked || this.progress.tokens < item.cost;
         button.addEventListener('click', () => this.spendTokens(item.cost, item.buy));
         el.appendChild(button);
