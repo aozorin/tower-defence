@@ -671,6 +671,9 @@ class Projectile {
 class Tower {
   static DAMAGE_MULTIPLIER = 1.1;
   static MAX_BARREL_MINES = 20;
+  static RANGE_UPGRADE_MULTIPLIER = 1.2;
+  static CANNON_BERSERK_CYCLE_COOLDOWN = 7;
+  static CANNON_BERSERK_BASE_DURATION = 7;
 
   constructor(col, row, game, type = 'cannon') {
     this.col = col;
@@ -686,12 +689,22 @@ class Tower {
     this.level = 1;
     this.berserkLevel = 0;
     this.berserkTimer = 0;
+    this.berserkDurationCurrent = Tower.CANNON_BERSERK_BASE_DURATION;
     this.berserkCooldownTimer = 0;
+    this.berserkWaitTimer = 0;
+    this.isWaitingForBerserkEnemy = false;
     this.isBerserkActive = false;
   }
 
   getRange() {
-    return this.config.range;
+    let range = this.config.range;
+    if (this.type !== 'barrel') {
+      range *= Math.pow(Tower.RANGE_UPGRADE_MULTIPLIER, this.level - 1);
+    }
+    if (this.type === 'cannon' && this.isBerserkActive) {
+      range *= 2;
+    }
+    return range;
   }
 
   getDamage() {
@@ -756,9 +769,25 @@ class Tower {
     if (!this.canUpgradeBerserk()) return false;
     this.berserkLevel++;
     if (this.berserkLevel === 1) {
-      this.berserkCooldownTimer = this.config.berserk.cooldown;
+      this.berserkCooldownTimer = Tower.CANNON_BERSERK_CYCLE_COOLDOWN;
     }
     return true;
+  }
+
+  isEnemyInBaseRange() {
+    let baseRange = this.config.range;
+    if (this.type !== 'barrel') {
+      baseRange *= Math.pow(Tower.RANGE_UPGRADE_MULTIPLIER, this.level - 1);
+    }
+
+    for (const enemy of this.game.enemies) {
+      if (!enemy.alive) continue;
+      const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+      if (dist <= baseRange) {
+        return true;
+      }
+    }
+    return false;
   }
 
   containsPoint(x, y) {
@@ -783,13 +812,33 @@ class Tower {
         this.berserkTimer -= dt;
         if (this.berserkTimer <= 0) {
           this.isBerserkActive = false;
-          this.berserkCooldownTimer = this.config.berserk.cooldown;
+          this.isWaitingForBerserkEnemy = false;
+          this.berserkWaitTimer = 0;
+          this.berserkCooldownTimer = Tower.CANNON_BERSERK_CYCLE_COOLDOWN;
         }
       } else {
-        this.berserkCooldownTimer -= dt;
-        if (this.berserkCooldownTimer <= 0) {
-          this.isBerserkActive = true;
-          this.berserkTimer = this.config.berserk.duration;
+        if (this.isWaitingForBerserkEnemy) {
+          this.berserkWaitTimer += dt;
+          if (this.isEnemyInBaseRange()) {
+            this.isWaitingForBerserkEnemy = false;
+            this.isBerserkActive = true;
+            this.berserkDurationCurrent =
+              Tower.CANNON_BERSERK_BASE_DURATION + this.berserkWaitTimer / 3;
+            this.berserkTimer = this.berserkDurationCurrent;
+            this.berserkWaitTimer = 0;
+          }
+        } else {
+          this.berserkCooldownTimer -= dt;
+          if (this.berserkCooldownTimer <= 0) {
+            if (this.isEnemyInBaseRange()) {
+              this.isBerserkActive = true;
+              this.berserkDurationCurrent = Tower.CANNON_BERSERK_BASE_DURATION;
+              this.berserkTimer = this.berserkDurationCurrent;
+            } else {
+              this.isWaitingForBerserkEnemy = true;
+              this.berserkWaitTimer = 0;
+            }
+          }
         }
       }
     }
@@ -877,6 +926,50 @@ class Tower {
     return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
+  drawStatusBar(ctx, x, y, width, height, progress, fillColor, bgColor = 'rgba(0, 0, 0, 0.55)') {
+    const clampedProgress = Math.max(0, Math.min(1, progress));
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(x, y, width, height);
+    ctx.fillStyle = fillColor;
+    ctx.fillRect(x, y, width * clampedProgress, height);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+  }
+
+  drawHudBars(ctx) {
+    const barWidth = TILE_SIZE * 0.75;
+    const barHeight = 6;
+    const barX = this.x - barWidth / 2;
+    let barY = this.y - TILE_SIZE * 0.58;
+
+    if (this.type === 'cannon' && this.berserkLevel > 0) {
+      let progress = 0;
+      let color = '#3498db';
+
+      if (this.isBerserkActive) {
+        const totalDuration = Math.max(0.001, this.berserkDurationCurrent);
+        progress = this.berserkTimer / totalDuration;
+        color = '#e74c3c';
+      } else if (this.isWaitingForBerserkEnemy) {
+        progress = 1;
+        color = '#f39c12';
+      } else {
+        progress = 1 - this.berserkCooldownTimer / Tower.CANNON_BERSERK_CYCLE_COOLDOWN;
+        color = '#3498db';
+      }
+
+      this.drawStatusBar(ctx, barX, barY, barWidth, barHeight, progress, color);
+      barY -= barHeight + 3;
+    }
+
+    if (this.type === 'barrel') {
+      const cooldownBase = Math.max(0.001, this.config.fireCooldown);
+      const progress = 1 - this.cooldown / cooldownBase;
+      this.drawStatusBar(ctx, barX, barY, barWidth, barHeight, progress, '#9b59b6');
+    }
+  }
+
   draw(ctx, images) {
     const spriteKey = this.getBodySpriteKey();
     const img = images[spriteKey];
@@ -884,6 +977,7 @@ class Tower {
     const w = img.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
     const h = img.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
+    this.drawHudBars(ctx);
   }
 }
 
