@@ -256,7 +256,10 @@ body {
 }
 
 .shop-item button:disabled {
-  opacity: 0.45;
+  opacity: 1;
+  color: #d6dce6;
+  background: rgba(32, 40, 54, 0.96);
+  border: 2px solid #aeb7c6;
   cursor: default;
 }
 
