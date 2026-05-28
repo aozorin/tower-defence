@@ -180,8 +180,8 @@ const TOWER_TYPES = {
     description: 'Взрывные бочки',
     shopSprite: 'tankBody_darkLarge_outline',
     bodySprite: 'tankBody_darkLarge_outline',
-    range: 100,
-    fireCooldown: 5,
+    range: 300,
+    fireCooldown: 3,
     projectileSpeed: 200,
     splashRadius: { 1: 50, 2: 65, 3: 85 },
     projectiles: {
@@ -319,11 +319,12 @@ class BarrelExplosion {
 class BarrelMine {
   static TRIGGER_RADIUS = 22;
 
-  constructor(x, y, damage, splashRadius, ttl = 10) {
+  constructor(x, y, damage, splashRadius, ownerTower, ttl = 10) {
     this.x = x;
     this.y = y;
     this.damage = damage;
     this.splashRadius = splashRadius;
+    this.ownerTower = ownerTower;
     this.ttl = ttl;
     this.spent = false;
     this.rotation = Math.random() * Math.PI * 2;
@@ -675,6 +676,9 @@ class Projectile {
 }
 
 class Tower {
+  static DAMAGE_MULTIPLIER = 1.1;
+  static MAX_BARREL_MINES = 20;
+
   constructor(col, row, game, type = 'cannon') {
     this.col = col;
     this.row = row;
@@ -702,7 +706,7 @@ class Tower {
     if (this.isBerserkActive && this.config.berserk) {
       dmg *= this.config.berserk.damageMultiplier[this.berserkLevel];
     }
-    return dmg;
+    return Math.round(dmg * Tower.DAMAGE_MULTIPLIER);
   }
 
   getSplashRadius() {
@@ -810,11 +814,15 @@ class Tower {
     if (this.cooldown > 0) return;
 
     if (this.type === 'barrel') {
-      const point = this.getRandomRoadCellInRange();
-      if (point) {
+      const activeMinesByThisTower = this.game.mines.filter(
+        (mine) => !mine.spent && mine.ownerTower === this
+      ).length;
+      const canPlaceMine = activeMinesByThisTower < Tower.MAX_BARREL_MINES;
+      const point = canPlaceMine ? this.getRandomRoadCellInRange() : null;
+      if (point && canPlaceMine) {
         const spot = cellCenter(point.col, point.row);
         this.game.mines.push(
-          new BarrelMine(spot.x, spot.y, this.getDamage(), this.getSplashRadius())
+          new BarrelMine(spot.x, spot.y, this.getDamage(), this.getSplashRadius(), this)
         );
       }
       this.cooldown = cooldown;
