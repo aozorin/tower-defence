@@ -363,9 +363,11 @@ class BarrelExplosion {
 class BarrelMine {
   static TRIGGER_RADIUS = 22;
 
-  constructor(x, y, damage, splashRadius, ownerTower) {
+  constructor(x, y, damage, splashRadius, ownerTower, col = null, row = null) {
     this.x = x;
     this.y = y;
+    this.col = col;
+    this.row = row;
     this.damage = damage;
     this.splashRadius = splashRadius;
     this.ownerTower = ownerTower;
@@ -711,7 +713,8 @@ class Projectile {
 
 class Tower {
   static DAMAGE_MULTIPLIER = 1.1;
-  static MAX_BARREL_MINES = 20;
+  static MAX_BARREL_MINES = 30;
+  static BARREL_MINE_CELL_OFFSET = TILE_SIZE * 0.28;
   static RANGE_UPGRADE_MULTIPLIER = 1.2;
   static CANNON_BERSERK_CYCLE_COOLDOWN = 7;
   static CANNON_BERSERK_BASE_DURATION = 7;
@@ -899,13 +902,37 @@ class Tower {
     if (this.type === 'barrel') {
       const activeMinesByThisTower = this.game.mines.filter(
         (mine) => !mine.spent && mine.ownerTower === this
-      ).length;
-      const canPlaceMine = activeMinesByThisTower < Tower.MAX_BARREL_MINES;
-      const point = canPlaceMine ? this.getRandomRoadCellInRange() : null;
-      if (point && canPlaceMine) {
-        const spot = cellCenter(point.col, point.row);
+      );
+      if (activeMinesByThisTower.length >= Tower.MAX_BARREL_MINES) {
+        const mineToReplace = activeMinesByThisTower[
+          Math.floor(Math.random() * activeMinesByThisTower.length)
+        ];
+        mineToReplace.spent = true;
+      }
+
+      const occupiedCells = new Set(
+        this.game.mines
+          .filter((mine) => (
+            !mine.spent &&
+            mine.ownerTower === this &&
+            mine.col != null &&
+            mine.row != null
+          ))
+          .map((mine) => `${mine.col},${mine.row}`)
+      );
+      const point = this.getRandomRoadCellInRange(occupiedCells);
+      if (point) {
+        const spot = this.getRandomMineSpot(point);
         this.game.mines.push(
-          new BarrelMine(spot.x, spot.y, this.getDamage(), this.getSplashRadius(), this)
+          new BarrelMine(
+            spot.x,
+            spot.y,
+            this.getDamage(),
+            this.getSplashRadius(),
+            this,
+            point.col,
+            point.row
+          )
         );
       }
       this.cooldown = cooldown;
@@ -954,20 +981,32 @@ class Tower {
     return nearest;
   }
 
-  getRandomRoadCellInRange() {
+  getRandomRoadCellInRange(excludedCells = new Set()) {
     const candidates = [];
-    for (const path of PATHS) {
-      for (const waypoint of path) {
-        if (isBaseCell(waypoint.col, waypoint.row)) continue;
-        const center = cellCenter(waypoint.col, waypoint.row);
-        const dist = Math.hypot(center.x - this.x, center.y - this.y);
-        if (dist <= this.getRange()) {
-          candidates.push(waypoint);
-        }
+    const fallbackCandidates = [];
+    for (const key of ROAD_CELLS) {
+      const [col, row] = key.split(',').map(Number);
+      if (isBaseCell(col, row)) continue;
+      const center = cellCenter(col, row);
+      const dist = Math.hypot(center.x - this.x, center.y - this.y);
+      if (dist <= this.getRange()) {
+        const cell = { col, row };
+        fallbackCandidates.push(cell);
+        if (!excludedCells.has(key)) candidates.push(cell);
       }
     }
-    if (candidates.length === 0) return null;
-    return candidates[Math.floor(Math.random() * candidates.length)];
+    const pool = candidates.length > 0 ? candidates : fallbackCandidates;
+    if (pool.length === 0) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  getRandomMineSpot(cell) {
+    const center = cellCenter(cell.col, cell.row);
+    const offset = Tower.BARREL_MINE_CELL_OFFSET;
+    return {
+      x: center.x + (Math.random() * 2 - 1) * offset,
+      y: center.y + (Math.random() * 2 - 1) * offset,
+    };
   }
 
   drawStatusBar(ctx, x, y, width, height, progress, fillColor, bgColor = 'rgba(0, 0, 0, 0.55)') {
