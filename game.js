@@ -319,25 +319,18 @@ class BarrelExplosion {
 class BarrelMine {
   static TRIGGER_RADIUS = 22;
 
-  constructor(x, y, damage, splashRadius, ownerTower, ttl = 10) {
+  constructor(x, y, damage, splashRadius, ownerTower) {
     this.x = x;
     this.y = y;
     this.damage = damage;
     this.splashRadius = splashRadius;
     this.ownerTower = ownerTower;
-    this.ttl = ttl;
     this.spent = false;
     this.rotation = Math.random() * Math.PI * 2;
   }
 
   update(dt, game) {
     if (this.spent) return;
-
-    this.ttl -= dt;
-    if (this.ttl <= 0) {
-      this.spent = true;
-      return;
-    }
 
     for (const enemy of game.enemies) {
       if (!enemy.alive) continue;
