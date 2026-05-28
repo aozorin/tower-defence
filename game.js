@@ -39,6 +39,8 @@ const PATHS = [
 
 const BASE_COL = 11;
 const BASE_ROW = 13;
+const MAIN_BASE_JUNCTION = { col: 11, row: 10, tile: 'tileGrass_roadSplitS' };
+const RIGHT_BASE_JUNCTION = { col: 13, row: 10, tile: 'tileGrass_roadSplitN' };
 
 function cellCenter(col, row) {
   return {
@@ -81,6 +83,7 @@ const TOWER_TYPES = {
     cost: 50,
     description: 'Сильные снаряды',
     shopSprite: 'tank_green',
+    shopIconOffsetY: 4,
     bodySprite: 'tank_green',
     range: 120,
     fireCooldown: 0.6,
@@ -129,6 +132,7 @@ const TOWER_TYPES = {
     cost: 120,
     description: 'Взрывные бочки',
     shopSprite: 'tankBody_darkLarge_outline',
+    shopIconOffsetY: -4,
     bodySprite: 'tankBody_darkLarge_outline',
     range: 300,
     fireCooldown: 3,
@@ -177,6 +181,8 @@ const ASSET_KEYS = [
   'tileGrass_roadEast',
   'tileGrass_roadNorth',
   'tileGrass_roadCrossing',
+  'tileGrass_roadSplitN',
+  'tileGrass_roadSplitS',
   'tileGrass_roadCornerUL',
   'tileGrass_roadCornerUR',
   'tileGrass_roadCornerLL',
@@ -1327,6 +1333,9 @@ class Game {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'radial-option';
+      if (option.iconOffsetY) {
+        btn.style.setProperty('--icon-offset-y', `${option.iconOffsetY}px`);
+      }
       const affordable = this.gold >= cost;
       if (!affordable) btn.classList.add('disabled');
       let dx = dir * 84 * (idx + 1);
@@ -1341,7 +1350,7 @@ class Game {
         const offset = compactOffsets[Math.min(idx, compactOffsets.length - 1)];
         dx = offset.x;
         dy = offset.y;
-        btn.style.transform = `translate(${dx}px, ${dy}px) scale(0.6)`;
+        btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%) scale(0.6)`;
       } else if (options.length === 3) {
         const triangleOffsets = [
           { x: 20, y: -30 },
@@ -1350,9 +1359,9 @@ class Game {
         ];
         dx = triangleOffsets[idx].x;
         dy = triangleOffsets[idx].y;
-        btn.style.transform = `translate(${dx}px, ${dy}px) scale(0.6)`;
+        btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%) scale(0.6)`;
       } else {
-        btn.style.transform = `translate(${dx}px, ${dy}px)`;
+        btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%)`;
       }
       btn.innerHTML = `<img src="${option.icon}" alt=""><span class="cost">${cost}</span>`;
       btn.addEventListener('click', () => {
@@ -1419,6 +1428,7 @@ class Game {
     const options = Object.entries(TOWER_TYPES).map(([type, cfg]) => ({
       cost: cfg.cost,
       icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
+      iconOffsetY: cfg.shopIconOffsetY || 0,
       action: () => this.confirmPurchase(slot, type),
     }));
     this.openRadialMenu(center.x, center.y, options, 'purchase');
@@ -1594,19 +1604,25 @@ class Game {
       for (let col = 0; col < GRID_COLS; col++) {
         let key = 'tileGrass1';
         if (isRoad(col, row)) {
-          const n = isRoad(col, row - 1);
-          const s = isRoad(col, row + 1);
-          const w = isRoad(col - 1, row);
-          const e = isRoad(col + 1, row);
-          const roadNeighborCount = (n ? 1 : 0) + (s ? 1 : 0) + (w ? 1 : 0) + (e ? 1 : 0);
-          if ((n || s) && !(e || w)) key = 'tileGrass_roadNorth';
-          else if ((e || w) && !(n || s)) key = 'tileGrass_roadEast';
-          else if (roadNeighborCount >= 3) key = 'tileGrass_roadCrossing';
-          else if (n && e) key = 'tileGrass_roadCornerUR';
-          else if (n && w) key = 'tileGrass_roadCornerUL';
-          else if (s && e) key = 'tileGrass_roadCornerLR';
-          else if (s && w) key = 'tileGrass_roadCornerLL';
-          else key = 'tileGrass_roadEast';
+          if (col === MAIN_BASE_JUNCTION.col && row === MAIN_BASE_JUNCTION.row) {
+            key = MAIN_BASE_JUNCTION.tile;
+          } else if (col === RIGHT_BASE_JUNCTION.col && row === RIGHT_BASE_JUNCTION.row) {
+            key = RIGHT_BASE_JUNCTION.tile;
+          } else {
+            const n = isRoad(col, row - 1);
+            const s = isRoad(col, row + 1);
+            const w = isRoad(col - 1, row);
+            const e = isRoad(col + 1, row);
+            const roadNeighborCount = (n ? 1 : 0) + (s ? 1 : 0) + (w ? 1 : 0) + (e ? 1 : 0);
+            if ((n || s) && !(e || w)) key = 'tileGrass_roadNorth';
+            else if ((e || w) && !(n || s)) key = 'tileGrass_roadEast';
+            else if (roadNeighborCount >= 3) key = 'tileGrass_roadCrossing';
+            else if (n && e) key = 'tileGrass_roadCornerUR';
+            else if (n && w) key = 'tileGrass_roadCornerUL';
+            else if (s && e) key = 'tileGrass_roadCornerLR';
+            else if (s && w) key = 'tileGrass_roadCornerLL';
+            else key = 'tileGrass_roadEast';
+          }
         } else if (isBuildSlot(col, row)) {
           key = (col + row) % 2 === 0 ? 'tileSand1' : 'tileSand2';
         } else {
