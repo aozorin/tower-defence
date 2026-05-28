@@ -383,13 +383,20 @@ class Enemy {
   static HEAL_RADIUS = 170;
   static HEAL_AMOUNT = 8;
   static HEAL_FLASH_DURATION = 0.2;
+  static BOSS_SYNC_GAP = 0.45;
+  static FAST_PACK_LOOKAHEAD = 1.8;
+  static FAST_PACK_MIN_COUNT = 2;
+  static HEALER_MIN_SPEED_MULT = 0.6;
+  static HEALER_MAX_SPEED_MULT = 1.9;
+  static GOLD_REWARD_MULTIPLIER = 1.3;
 
   constructor(game, type = 'red', pathOffset = 0, wave = 1) {
     const cfg = ENEMY_TYPES[type];
     this.game = game;
     this.type = type;
+    this.baseSpeed = cfg.speed;
     this.speed = cfg.speed;
-    this.goldReward = cfg.gold;
+    this.goldReward = Math.round(cfg.gold * Enemy.GOLD_REWARD_MULTIPLIER);
     this.waypointIndex = 0;
     this.progress = pathOffset;
     let hp = getEnemyBaseHp(type, wave);
@@ -408,6 +415,47 @@ class Enemy {
     this.x = start.x;
     this.y = start.y;
     this.angle = angleFromDirection(next.x - start.x, next.y - start.y);
+  }
+
+  getPathProgress() {
+    return this.waypointIndex + this.progress;
+  }
+
+  getAdaptiveHealerSpeed() {
+    let speedMultiplier = 1;
+    const myProgress = this.getPathProgress();
+
+    const boss = this.game.enemies.find((enemy) => enemy.alive && enemy.type === 'dark');
+    if (boss) {
+      const progressGap = myProgress - boss.getPathProgress();
+      if (progressGap > Enemy.BOSS_SYNC_GAP) {
+        speedMultiplier *= 0.65;
+      } else if (progressGap < -Enemy.BOSS_SYNC_GAP * 0.6) {
+        speedMultiplier *= 1.15;
+      }
+    }
+
+    let fastPackAhead = 0;
+    for (const enemy of this.game.enemies) {
+      if (!enemy.alive || enemy.type !== 'blue') continue;
+      const progressDelta = enemy.getPathProgress() - myProgress;
+      if (progressDelta >= 0.2 && progressDelta <= Enemy.FAST_PACK_LOOKAHEAD) {
+        fastPackAhead++;
+      }
+    }
+
+    if (fastPackAhead >= Enemy.FAST_PACK_MIN_COUNT) {
+      speedMultiplier *= 1.45;
+      if (fastPackAhead >= 4) {
+        speedMultiplier *= 1.1;
+      }
+    }
+
+    const clampedMultiplier = Math.max(
+      Enemy.HEALER_MIN_SPEED_MULT,
+      Math.min(Enemy.HEALER_MAX_SPEED_MULT, speedMultiplier)
+    );
+    return this.baseSpeed * clampedMultiplier;
   }
 
   takeDamage(amount) {
@@ -458,6 +506,12 @@ class Enemy {
       this.angle = angleFromDirection(dx, dy);
     }
 
+    if (this.type === 'sand') {
+      this.speed = this.getAdaptiveHealerSpeed();
+    } else {
+      this.speed = this.baseSpeed;
+    }
+
     const advance = (this.speed * dt) / segmentLength;
 
     this.progress += advance;
@@ -493,7 +547,7 @@ class Enemy {
       if (this.healTimer >= 1) {
         this.healTimer -= 1;
         for (const other of this.game.enemies) {
-          if (other === this || !other.alive) continue;
+          if (!other.alive) continue;
           if (other.hp >= other.maxHp) continue;
           const dist = Math.hypot(other.x - this.x, other.y - this.y);
           if (dist <= Enemy.HEAL_RADIUS) {
