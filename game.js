@@ -181,7 +181,7 @@ const TOWER_TYPES = {
     shopSprite: 'tankBody_darkLarge_outline',
     bodySprite: 'tankBody_darkLarge_outline',
     range: 100,
-    fireCooldown: 1.2,
+    fireCooldown: 5,
     projectileSpeed: 200,
     splashRadius: { 1: 50, 2: 65, 3: 85 },
     projectiles: {
@@ -382,6 +382,7 @@ function getEnemyBaseHp(type, wave) {
 class Enemy {
   static HEAL_RADIUS = 170;
   static HEAL_AMOUNT = 8;
+  static HEAL_FLASH_DURATION = 0.2;
 
   constructor(game, type = 'red', pathOffset = 0, wave = 1) {
     const cfg = ENEMY_TYPES[type];
@@ -400,6 +401,7 @@ class Enemy {
     this.alive = true;
     this.reachedEnd = false;
     this.healTimer = 0;
+    this.healFlashTimer = 0;
 
     const start = cellCenter(PATH_WAYPOINTS[0].col, PATH_WAYPOINTS[0].row);
     const next = cellCenter(PATH_WAYPOINTS[1].col, PATH_WAYPOINTS[1].row);
@@ -426,6 +428,10 @@ class Enemy {
 
   update(dt) {
     if (!this.alive) return;
+
+    if (this.healFlashTimer > 0) {
+      this.healFlashTimer = Math.max(0, this.healFlashTimer - dt);
+    }
 
     if (this.waypointIndex >= PATH_WAYPOINTS.length - 1) {
       this.reachedEnd = true;
@@ -492,6 +498,7 @@ class Enemy {
           const dist = Math.hypot(other.x - this.x, other.y - this.y);
           if (dist <= Enemy.HEAL_RADIUS) {
             other.hp = Math.min(other.maxHp, other.hp + Enemy.HEAL_AMOUNT);
+            other.healFlashTimer = Enemy.HEAL_FLASH_DURATION;
           }
         }
       }
@@ -504,6 +511,30 @@ class Enemy {
     const img = images[ENEMY_TYPES[this.type].sprite];
     const w = img.width * ASSET_SCALE;
     const h = img.height * ASSET_SCALE;
+
+    if (this.alive && this.type === 'sand') {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, Enemy.HEAL_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(46, 204, 113, 0.08)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(46, 204, 113, 0.65)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    if (this.alive && this.healFlashTimer > 0) {
+      const alpha = this.healFlashTimer / Enemy.HEAL_FLASH_DURATION;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, Math.max(w, h) * 0.38, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(46, 204, 113, ${0.25 * alpha})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(46, 204, 113, ${0.95 * alpha})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
 
     if (this.alive && this.hp < this.maxHp) {
@@ -813,7 +844,7 @@ class Game {
     this.mines = [];
     this.explosions = [];
 
-    this.gold = 100;
+    this.gold = 120;
     this.lives = 10;
     this.wave = 1;
     this.enemiesSpawned = 0;
