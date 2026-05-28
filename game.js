@@ -127,9 +127,12 @@ const TOWER_TYPES = {
       1: 'specialBarrel6',
       2: 'specialBarrel7',
       3: 'specialBarrel7_outline',
+      4: 'shotLarge',
+      5: 'shotRed',
     },
-    damage: { 1: 5, 2: 8, 3: 13 },
-    upgradeCost: { 2: 100, 3: 200 },
+    damage: { 1: 5, 2: 8, 3: 13, 4: 34, 5: 86 },
+    splashRadius: { 4: 46, 5: 76 },
+    upgradeCost: { 2: 100, 3: 200, 4: 1000, 5: 3000 },
   },
   barrel: {
     label: 'Бочкомёт',
@@ -139,7 +142,7 @@ const TOWER_TYPES = {
     shopIconOffsetY: -4,
     bodySprite: 'tankBody_darkLarge_outline',
     range: 300,
-    fireCooldown: 3,
+    fireCooldown: { 1: 3, 2: 2.5, 3: 2 },
     projectileSpeed: 200,
     splashRadius: { 1: 50, 2: 65, 3: 85 },
     projectiles: {
@@ -419,6 +422,10 @@ function getEnemyBaseHp(type, wave) {
   return hp;
 }
 
+function getSandBaseHp(wave) {
+  return Math.round(getEnemyBaseHp('dark', wave) * 0.35);
+}
+
 class Enemy {
   static HEAL_RADIUS = 170;
   static HEAL_AMOUNT = 8;
@@ -434,6 +441,7 @@ class Enemy {
     const cfg = ENEMY_TYPES[type];
     this.game = game;
     this.type = type;
+    this.wave = wave;
     this.baseSpeed = cfg.speed;
     this.speed = cfg.speed;
     this.goldReward = Math.round(cfg.gold * Enemy.GOLD_REWARD_MULTIPLIER);
@@ -441,13 +449,18 @@ class Enemy {
     this.progress = pathOffset;
     let hp = getEnemyBaseHp(type, wave);
     if (type === 'sand') {
-      hp = Math.round(getEnemyBaseHp('dark', wave) * 0.35);
+      hp = getSandBaseHp(wave);
     }
     this.hp = hp;
     this.maxHp = hp;
     this.alive = true;
     this.reachedEnd = false;
     this.healTimer = 0;
+    this.healAmount = type === 'sand'
+      ? Math.max(Enemy.HEAL_AMOUNT, Math.round(
+        Enemy.HEAL_AMOUNT * (getSandBaseHp(wave) / getSandBaseHp(1))
+      ))
+      : 0;
     this.healFlashTimer = 0;
 
     this.path = path;
@@ -592,7 +605,7 @@ class Enemy {
           if (other.hp >= other.maxHp) continue;
           const dist = Math.hypot(other.x - this.x, other.y - this.y);
           if (dist <= Enemy.HEAL_RADIUS) {
-            other.hp = Math.min(other.maxHp, other.hp + Enemy.HEAL_AMOUNT);
+            other.hp = Math.min(other.maxHp, other.hp + this.healAmount);
             other.healFlashTimer = Enemy.HEAL_FLASH_DURATION;
           }
         }
@@ -759,9 +772,20 @@ class Tower {
     return Math.round(dmg * Tower.DAMAGE_MULTIPLIER);
   }
 
+  getFireCooldown() {
+    const cooldown = this.config.fireCooldown;
+    if (typeof cooldown === 'object') {
+      return cooldown[this.level] ?? cooldown[1];
+    }
+    return cooldown;
+  }
+
   getSplashRadius() {
     if (this.config.splashRadius) {
-      return this.config.splashRadius[this.level] || this.config.splashRadius;
+      if (typeof this.config.splashRadius === 'object') {
+        return this.config.splashRadius[this.level] ?? 0;
+      }
+      return this.config.splashRadius;
     }
     return 0;
   }
@@ -782,12 +806,11 @@ class Tower {
   }
 
   getUpgradeCost() {
-    if (this.level >= 3) return null;
-    return this.config.upgradeCost[this.level + 1];
+    return this.config.upgradeCost?.[this.level + 1] ?? null;
   }
 
   canUpgrade() {
-    return this.level < 3;
+    return this.getUpgradeCost() != null;
   }
 
   upgrade() {
@@ -892,9 +915,10 @@ class Tower {
       this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
     }
 
+    const baseCooldown = this.getFireCooldown();
     const cooldown = (this.isBerserkActive && this.config.berserk)
-      ? this.config.fireCooldown * this.config.berserk.fireCooldownMultiplier
-      : this.config.fireCooldown;
+      ? baseCooldown * this.config.berserk.fireCooldownMultiplier
+      : baseCooldown;
 
     this.cooldown -= dt;
     if (this.cooldown > 0) return;
@@ -1047,7 +1071,7 @@ class Tower {
     }
 
     if (this.type === 'barrel') {
-      const cooldownBase = Math.max(0.001, this.config.fireCooldown);
+      const cooldownBase = Math.max(0.001, this.getFireCooldown());
       const progress = 1 - this.cooldown / cooldownBase;
       this.drawStatusBar(ctx, barX, barY, barWidth, barHeight, progress, '#9b59b6');
     }
@@ -1062,7 +1086,9 @@ class Tower {
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
     const rankKey = this.berserkLevel > 0
       ? `gold${Math.min(3, this.berserkLevel)}`
-      : `silver${Math.min(3, this.level)}`;
+      : this.level > 3
+        ? `gold${Math.min(3, this.level - 3)}`
+        : `silver${Math.min(3, this.level)}`;
     const rankImg = images[rankKey];
     if (rankImg) {
       const rw = TILE_SIZE * 0.5;
@@ -1095,7 +1121,7 @@ class Game {
     this.bluePackChance = 0;
     this.sandChance = 0;
     this.waveActive = false;
-    this.bossSpawned = false;
+    this.bossSpawnSchedule = [];
     this.gameOver = false;
     this.isPaused = false;
     this.started = false;
@@ -1199,6 +1225,76 @@ class Game {
     return plan;
   }
 
+  shufflePathIndexes() {
+    const indexes = PATHS.map((_, idx) => idx);
+    for (let i = indexes.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indexes[i], indexes[j]] = [indexes[j], indexes[i]];
+    }
+    return indexes;
+  }
+
+  getBossLaneCount() {
+    if (this.wave < 5) return 0;
+    if (this.wave < 10) return 1;
+    if (this.wave < 15) return 2;
+    return 3;
+  }
+
+  generateBossSpawnSchedule() {
+    const laneCount = this.getBossLaneCount();
+    if (laneCount === 0) return [];
+
+    const pathIndexes = this.shufflePathIndexes().slice(0, laneCount);
+    if (this.wave < 25) {
+      return pathIndexes.map((pathIndex) => ({
+        pathIndex,
+        spawnAtCount: this.enemiesPerWave,
+        spawned: false,
+      }));
+    }
+
+    const schedule = [];
+    const usedSpawnCounts = new Set();
+    const secondBossChance = this.wave >= 50 ? 0.65 : 0.35;
+    const firstBossMinProgress = this.wave >= 50 ? 0 : 0.28;
+
+    const reserveSpawnCount = (preferred) => {
+      let spawnAtCount = Math.max(0, Math.min(this.enemiesPerWave, Math.round(preferred)));
+      while (usedSpawnCounts.has(spawnAtCount) && spawnAtCount < this.enemiesPerWave) {
+        spawnAtCount++;
+      }
+      while (usedSpawnCounts.has(spawnAtCount) && spawnAtCount > 0) {
+        spawnAtCount--;
+      }
+      usedSpawnCounts.add(spawnAtCount);
+      return spawnAtCount;
+    };
+
+    pathIndexes.forEach((pathIndex, idx) => {
+      const earlyProgress = firstBossMinProgress + Math.random() * 0.35;
+      const firstPreferred = idx === 0 && this.wave >= 50
+        ? 0
+        : this.enemiesPerWave * earlyProgress;
+      schedule.push({
+        pathIndex,
+        spawnAtCount: reserveSpawnCount(firstPreferred),
+        spawned: false,
+      });
+
+      if (Math.random() < secondBossChance) {
+        const lateProgress = 0.62 + Math.random() * 0.28;
+        schedule.push({
+          pathIndex,
+          spawnAtCount: reserveSpawnCount(this.enemiesPerWave * lateProgress),
+          spawned: false,
+        });
+      }
+    });
+
+    return schedule.sort((a, b) => a.spawnAtCount - b.spawnAtCount);
+  }
+
   takePathForSpawn(groupSize = 1) {
     const available = this.pathSpawnRemaining
       .map((count, idx) => ({ count, idx }))
@@ -1241,11 +1337,12 @@ class Game {
     this.waveActive = true;
     this.enemiesSpawned = 0;
     this.spawnTimer = 0;
-    this.bossSpawned = false;
     this.pathSpawnPlan = this.generatePathSpawnPlan(this.enemiesPerWave);
     this.pathSpawnRemaining = [...this.pathSpawnPlan];
     this.pathFirstSpawned = new Array(PATHS.length).fill(false);
+    this.bossSpawnSchedule = this.generateBossSpawnSchedule();
     this.showWaveBanner(`В0ЛНА ${this.wave}`);
+    this.spawnDueBosses();
   }
 
   spawnRedEnemy() {
@@ -1282,10 +1379,28 @@ class Game {
     this.enemiesSpawned += count;
   }
 
-  spawnBoss() {
-    const path = PATHS[Math.floor(Math.random() * PATHS.length)];
+  spawnBoss(pathIndex = Math.floor(Math.random() * PATHS.length)) {
+    const path = PATHS[pathIndex];
     this.enemies.push(new Enemy(this, 'dark', path, 0, this.wave));
-    this.bossSpawned = true;
+    this.pathFirstSpawned[pathIndex] = true;
+  }
+
+  spawnDueBosses() {
+    if (this.wave < 5) return;
+    const due = this.bossSpawnSchedule.filter((entry) => (
+      !entry.spawned && this.enemiesSpawned >= entry.spawnAtCount
+    ));
+    if (due.length === 0) return;
+
+    const entriesToSpawn = this.wave < 25 ? due : [due[0]];
+    for (const entry of entriesToSpawn) {
+      this.spawnBoss(entry.pathIndex);
+      entry.spawned = true;
+    }
+  }
+
+  areBossesDone() {
+    return this.wave < 5 || this.bossSpawnSchedule.every((entry) => entry.spawned);
   }
 
   spawnEnemy() {
@@ -1452,6 +1567,15 @@ class Game {
     this.renderRadialMenu();
   }
 
+  getTowerUpgradeIcon(tower) {
+    const nextLevel = tower.level + 1;
+    if (tower.type === 'dart' && nextLevel > 3) {
+      const rank = String(Math.min(3, nextLevel - 3)).padStart(3, '0');
+      return `assets/kenney_ranks-pack/PNG/Retina/Gold/rank${rank}.png`;
+    }
+    return 'assets/kenney_game-icons/PNG/White/2x/arrowUp.png';
+  }
+
   upgradeBerserk(tower) {
     if (!tower.canUpgradeBerserk()) return;
     const cost = tower.getBerserkUpgradeCost();
@@ -1478,7 +1602,7 @@ class Game {
     if (tower.canUpgrade()) {
       options.push({
         getCost: () => tower.getUpgradeCost(),
-        icon: 'assets/kenney_game-icons/PNG/White/2x/arrowUp.png',
+        icon: this.getTowerUpgradeIcon(tower),
         action: () => this.upgradeTower(tower),
       });
     }
@@ -1592,12 +1716,10 @@ class Game {
       }
     }
 
-    if (this.waveActive && this.enemiesSpawned >= this.enemiesPerWave && !this.bossSpawned && this.wave >= 5) {
-      this.spawnBoss();
-    }
+    if (this.waveActive) this.spawnDueBosses();
 
     const allSpawned = this.enemiesSpawned >= this.enemiesPerWave;
-    const noBossPending = this.wave < 5 || this.bossSpawned;
+    const noBossPending = this.areBossesDone();
     const waveCleared = allSpawned && noBossPending && this.enemies.length === 0;
 
     if (waveCleared && this.waveActive) {
