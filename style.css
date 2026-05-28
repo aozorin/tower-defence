@@ -191,10 +191,38 @@ body {
 
 .shop-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px;
   margin-top: 14px;
   text-align: left;
+}
+
+.shop-tabs {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shop-tab-btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 14px;
+  color: #eaf2ff;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+
+.shop-tab-btn.active {
+  background: rgba(82, 185, 255, 0.6);
+}
+
+.shop-tree-title {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  color: #b9dcff;
+  margin: 6px 0 2px;
 }
 
 .shop-item {
@@ -246,8 +274,8 @@ body {
   position: absolute;
   top: 0;
   left: 0;
-  width: 72px;
-  height: 72px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   border: 0;
   cursor: pointer;
@@ -268,8 +296,8 @@ body {
 }
 
 .radial-option img {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   transform: translateY(var(--icon-offset-y, 0));
   image-rendering: pixelated;
 }

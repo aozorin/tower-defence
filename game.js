@@ -189,17 +189,26 @@ const PROGRESSION_DEFAULTS = {
   unlockedTowers: { cannon: true, dart: false, barrel: false },
   towerMaxLevel: { cannon: 1, dart: 1, barrel: 1 },
   stats: { damage: 0, range: 0, economy: 0, lives: 0 },
-  effects: { cannonImpact: false, dartOvercharge: false, barrelStockpile: false },
+  effects: {
+    cannonImpact: false,
+    dartOvercharge: false,
+    barrelStockpile: false,
+    dartPoison: false,
+    dartSlow: false,
+    cannonPierce: false,
+    barrelNapalm: false,
+    barrelSnare: false,
+  },
   berserkUnlocked: false,
   speedLevel: 0,
   startWaveLevel: 0,
 };
-const STAT_MAX_LEVELS = { damage: 5, range: 5, economy: 5, lives: 4 };
+const STAT_MAX_LEVELS = { damage: 10, range: 10, economy: 10, lives: 10 };
 const STAT_COSTS = {
-  damage: [40, 85, 150, 240, 360],
-  range: [35, 80, 140, 225, 330],
-  economy: [35, 75, 130, 210, 320],
-  lives: [45, 100, 190, 330],
+  damage: [40, 85, 130, 180, 240, 300, 390, 500, 640, 820],
+  range: [35, 75, 115, 165, 220, 285, 360, 460, 590, 750],
+  economy: [35, 70, 105, 150, 205, 270, 350, 450, 580, 740],
+  lives: [45, 90, 135, 185, 250, 330, 430, 560, 730, 940],
 };
 const TOWER_UNLOCK_COSTS = { dart: 70, barrel: 130 };
 const TOWER_LEVEL_COSTS = {
@@ -207,7 +216,16 @@ const TOWER_LEVEL_COSTS = {
   dart: { 2: 55, 3: 100, 4: 260, 5: 520 },
   barrel: { 2: 130, 3: 260 },
 };
-const EFFECT_COSTS = { cannonImpact: 220, dartOvercharge: 220, barrelStockpile: 260 };
+const EFFECT_COSTS = {
+  cannonImpact: 220,
+  cannonPierce: 360,
+  dartOvercharge: 220,
+  dartPoison: 340,
+  dartSlow: 520,
+  barrelStockpile: 260,
+  barrelNapalm: 360,
+  barrelSnare: 520,
+};
 const BERSERK_UNLOCK_COST = 420;
 const SPEED_LEVEL_COSTS = [120, 300];
 const START_WAVE_COSTS = [120, 220, 380, 650, 1100];
@@ -550,6 +568,10 @@ class Enemy {
       ))
       : 0;
     this.healFlashTimer = 0;
+    this.poisonDps = 0;
+    this.poisonTimer = 0;
+    this.slowMultiplier = 1;
+    this.slowTimer = 0;
 
     this.path = path;
     const start = cellCenter(this.path[0].col, this.path[0].row);
@@ -618,6 +640,19 @@ class Enemy {
 
   update(dt) {
     if (!this.alive) return;
+    if (this.poisonTimer > 0 && this.poisonDps > 0) {
+      this.poisonTimer = Math.max(0, this.poisonTimer - dt);
+      this.takeDamage(this.poisonDps * dt);
+      if (this.poisonTimer <= 0) {
+        this.poisonDps = 0;
+      }
+    }
+    if (this.slowTimer > 0) {
+      this.slowTimer = Math.max(0, this.slowTimer - dt);
+      if (this.slowTimer <= 0) {
+        this.slowMultiplier = 1;
+      }
+    }
 
     if (this.healFlashTimer > 0) {
       this.healFlashTimer = Math.max(0, this.healFlashTimer - dt);
@@ -654,7 +689,7 @@ class Enemy {
       this.speed = this.baseSpeed;
     }
 
-    const advance = (this.speed * dt) / segmentLength;
+    const advance = (this.speed * this.slowMultiplier * dt) / segmentLength;
 
     this.progress += advance;
 
@@ -750,7 +785,7 @@ class Enemy {
 class Projectile {
   static HIT_RADIUS = 12;
 
-  constructor(x, y, target, damage, game, bulletKey, speed, splashRadius = 0) {
+  constructor(x, y, target, damage, game, bulletKey, speed, splashRadius = 0, effects = null) {
     this.x = x;
     this.y = y;
     this.target = target;
@@ -761,6 +796,19 @@ class Projectile {
     this.hit = false;
     this.splashRadius = splashRadius;
     this.flightAngle = 0;
+    this.effects = effects || {};
+  }
+
+  applyEffects(enemy) {
+    if (!enemy?.alive) return;
+    if (this.effects.poisonDps > 0 && this.effects.poisonDuration > 0) {
+      enemy.poisonDps = Math.max(enemy.poisonDps, this.effects.poisonDps);
+      enemy.poisonTimer = Math.max(enemy.poisonTimer, this.effects.poisonDuration);
+    }
+    if (this.effects.slowMultiplier > 0 && this.effects.slowMultiplier < 1 && this.effects.slowDuration > 0) {
+      enemy.slowMultiplier = Math.min(enemy.slowMultiplier, this.effects.slowMultiplier);
+      enemy.slowTimer = Math.max(enemy.slowTimer, this.effects.slowDuration);
+    }
   }
 
   update(dt) {
@@ -783,10 +831,12 @@ class Projectile {
           const eDist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
           if (eDist <= this.splashRadius) {
             enemy.takeDamage(this.damage);
+            this.applyEffects(enemy);
           }
         }
       } else {
         this.target.takeDamage(this.damage);
+        this.applyEffects(this.target);
       }
       this.hit = true;
       return;
@@ -879,7 +929,7 @@ class Tower {
 
   getSplashRadius() {
     if (this.type === 'cannon' && this.level >= 3 && this.game.hasProgressEffect?.('cannonImpact')) {
-      return 34;
+      return this.game.hasProgressEffect?.('cannonPierce') ? 48 : 34;
     }
     if (this.config.splashRadius) {
       let radius = this.config.splashRadius;
@@ -899,6 +949,27 @@ class Tower {
       return this.config.berserk.projectiles[this.berserkLevel];
     }
     return this.config.projectiles[this.level];
+  }
+
+  getShotEffects() {
+    const effects = {};
+    if (this.type === 'dart' && this.game.hasProgressEffect?.('dartPoison')) {
+      effects.poisonDps = Math.round(this.getDamage() * 0.25);
+      effects.poisonDuration = 2.5;
+    }
+    if (this.type === 'dart' && this.game.hasProgressEffect?.('dartSlow')) {
+      effects.slowMultiplier = 0.68;
+      effects.slowDuration = 1.6;
+    }
+    if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelNapalm')) {
+      effects.poisonDps = Math.round(this.getDamage() * 0.4);
+      effects.poisonDuration = 3;
+    }
+    if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelSnare')) {
+      effects.slowMultiplier = 0.58;
+      effects.slowDuration = 1.8;
+    }
+    return effects;
   }
 
   getBodySpriteKey() {
@@ -1076,20 +1147,21 @@ class Tower {
     const splash = this.getSplashRadius();
     const projKey = this.getProjectileKey();
     const speed = this.config.projectileSpeed;
+    const shotEffects = this.getShotEffects();
 
     if (this.isBerserkActive && this.config.berserk) {
       const dir = this.angle + TANK_SPRITE_FACING;
       const perpX = Math.cos(dir + Math.PI / 2) * 8;
       const perpY = Math.sin(dir + Math.PI / 2) * 8;
       this.game.projectiles.push(
-        new Projectile(this.x + perpX, this.y + perpY, target, dmg, this.game, projKey, speed, splash)
+        new Projectile(this.x + perpX, this.y + perpY, target, dmg, this.game, projKey, speed, splash, shotEffects)
       );
       this.game.projectiles.push(
-        new Projectile(this.x - perpX, this.y - perpY, target, dmg, this.game, projKey, speed, splash)
+        new Projectile(this.x - perpX, this.y - perpY, target, dmg, this.game, projKey, speed, splash, shotEffects)
       );
     } else {
       this.game.projectiles.push(
-        new Projectile(this.x, this.y, target, dmg, this.game, projKey, speed, splash)
+        new Projectile(this.x, this.y, target, dmg, this.game, projKey, speed, splash, shotEffects)
       );
     }
 
@@ -1265,9 +1337,11 @@ class Game {
     this.pauseBtn = document.getElementById('pause-btn');
     this.speedBtn = document.getElementById('speed-btn');
     this.progressSummaryEl = document.getElementById('progress-summary');
+    this.shopTabsEl = document.getElementById('shop-tabs');
     this.shopGridEl = document.getElementById('shop-grid');
     this.startWaveLabelEl = document.getElementById('start-wave-label');
     this.runRewardEl = document.getElementById('run-reward');
+    this.activeShopTab = 'core';
 
     this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
     this.pauseBtn.addEventListener('click', () => this.togglePause());
@@ -1323,23 +1397,24 @@ class Game {
   }
 
   getStartingGold() {
-    return 90 + this.progress.stats.economy * 30 + (this.progress.selectedStartWave - 1) * 16;
+    return 90 + this.progress.stats.economy * 45 + (this.progress.selectedStartWave - 1) * 16;
   }
 
   getStartingLives() {
-    return 8 + this.progress.stats.lives * 2;
+    return 10 + this.progress.stats.lives * 5;
   }
 
   getTowerDamageMultiplier(type) {
-    let multiplier = 0.72 + this.progress.stats.damage * 0.07;
+    let multiplier = 0.72 + this.progress.stats.damage * 0.09;
     if (type === 'cannon' && this.progress.effects.cannonImpact) multiplier += 0.08;
+    if (type === 'cannon' && this.progress.effects.cannonPierce) multiplier += 0.1;
     if (type === 'dart' && this.progress.effects.dartOvercharge) multiplier += 0.08;
     if (type === 'barrel' && this.progress.effects.barrelStockpile) multiplier += 0.05;
     return multiplier;
   }
 
   getTowerRangeMultiplier(type) {
-    let multiplier = 0.9 + this.progress.stats.range * 0.05;
+    let multiplier = 0.9 + this.progress.stats.range * 0.06;
     if (type === 'barrel' && this.progress.effects.barrelStockpile) multiplier += 0.05;
     return multiplier;
   }
@@ -1392,6 +1467,7 @@ class Game {
     this.startWaveLabelEl.textContent = `Волна ${this.progress.selectedStartWave}`;
     this.speedBtn.textContent = `x${this.gameSpeed}`;
     this.speedBtn.disabled = getMaxGameSpeed(this.progress) <= 1;
+    this.renderShopTabs();
     this.renderProgressShop();
     this.syncStartPreviewStats();
   }
@@ -1427,132 +1503,192 @@ class Game {
     this.updateProgressUi();
   }
 
-  getShopItems() {
+  getShopTabs() {
+    return [
+      { id: 'core', label: 'База' },
+      { id: 'towers', label: 'Башни' },
+      { id: 'cannon', label: 'Танк' },
+      { id: 'dart', label: 'Дротики' },
+      { id: 'barrel', label: 'Бочкомет' },
+      { id: 'meta', label: 'Режим' },
+    ];
+  }
+
+  getShopItems(tab = 'core') {
     const items = [];
-    const add = (id, title, detail, cost, bought, buy, blocked = false) => {
-      items.push({ id, title, detail, cost, bought, buy, blocked });
+    const add = (id, title, detail, cost, bought, buy, blocked = false, branch = '') => {
+      items.push({ id, title, detail, cost, bought, buy, blocked, branch });
     };
 
-    add(
-      'unlock-dart',
-      'Дротики',
-      'Новая быстрая пушка',
-      TOWER_UNLOCK_COSTS.dart,
-      this.progress.unlockedTowers.dart,
-      () => { this.progress.unlockedTowers.dart = true; }
-    );
-    add(
-      'unlock-barrel',
-      'Бочкомёт',
-      'Мины по дороге',
-      TOWER_UNLOCK_COSTS.barrel,
-      this.progress.unlockedTowers.barrel,
-      () => { this.progress.unlockedTowers.barrel = true; }
-    );
+    if (tab === 'towers') {
+      add(
+        'unlock-dart',
+        'Открыть: Дротики',
+        'Быстрая пушка',
+        TOWER_UNLOCK_COSTS.dart,
+        this.progress.unlockedTowers.dart,
+        () => { this.progress.unlockedTowers.dart = true; },
+        false,
+        'Открытие'
+      );
+      add(
+        'unlock-barrel',
+        'Открыть: Бочкомет',
+        'Мины на карте',
+        TOWER_UNLOCK_COSTS.barrel,
+        this.progress.unlockedTowers.barrel,
+        () => { this.progress.unlockedTowers.barrel = true; },
+        false,
+        'Открытие'
+      );
+      for (const [type, levels] of Object.entries(TOWER_LEVEL_COSTS)) {
+        for (const [levelText, cost] of Object.entries(levels)) {
+          const level = Number(levelText);
+          const towerUnlocked = this.progress.unlockedTowers[type];
+          const currentMax = this.progress.towerMaxLevel[type] || 1;
+          const titleByType = { cannon: 'Танк', dart: 'Дротики', barrel: 'Бочкомет' };
+          add(
+            `${type}-level-${level}`,
+            `${titleByType[type]} ур. ${level}`,
+            'Следующий узел ветки',
+            cost,
+            currentMax >= level,
+            () => { this.progress.towerMaxLevel[type] = level; },
+            !towerUnlocked || currentMax < level - 1,
+            titleByType[type]
+          );
+        }
+      }
+      return items;
+    }
 
-    for (const [type, levels] of Object.entries(TOWER_LEVEL_COSTS)) {
-      for (const [levelText, cost] of Object.entries(levels)) {
-        const level = Number(levelText);
-        const towerUnlocked = this.progress.unlockedTowers[type];
-        const currentMax = this.progress.towerMaxLevel[type] || 1;
-        const titleByType = { cannon: 'Танк', dart: 'Дротики', barrel: 'Бочкомёт' };
+    if (tab === 'core') {
+      const statTitles = {
+        damage: 'Урон',
+        range: 'Дальность',
+        economy: 'Стартовое золото',
+        lives: 'Прочность базы',
+      };
+      for (const [stat, title] of Object.entries(statTitles)) {
+        const level = this.progress.stats[stat];
         add(
-          `${type}-level-${level}`,
-          `${titleByType[type]} ур. ${level}`,
-          'Разрешить прокачку',
-          cost,
-          currentMax >= level,
-          () => { this.progress.towerMaxLevel[type] = level; },
-          !towerUnlocked || currentMax < level - 1
+          `stat-${stat}`,
+          `${title} ${level}/${STAT_MAX_LEVELS[stat]}`,
+          'Базовый узел',
+          STAT_COSTS[stat][level],
+          level >= STAT_MAX_LEVELS[stat],
+          () => { this.progress.stats[stat]++; },
+          false,
+          'Базовые параметры'
         );
       }
+      return items;
     }
 
-    add(
-      'berserk',
-      'Берсерк',
-      'Режим танка ур. 3',
-      BERSERK_UNLOCK_COST,
-      this.progress.berserkUnlocked,
-      () => { this.progress.berserkUnlocked = true; },
-      this.progress.towerMaxLevel.cannon < 3
-    );
-
-    const statTitles = {
-      damage: 'Урон',
-      range: 'Дальность',
-      economy: 'Стартовое золото',
-      lives: 'Прочность базы',
-    };
-    for (const [stat, title] of Object.entries(statTitles)) {
-      const level = this.progress.stats[stat];
+    if (tab === 'meta') {
       add(
-        `stat-${stat}`,
-        `${title} ${level}/${STAT_MAX_LEVELS[stat]}`,
-        'Базовое усиление',
-        STAT_COSTS[stat][level],
-        level >= STAT_MAX_LEVELS[stat],
-        () => { this.progress.stats[stat]++; }
+        'berserk',
+        'Берсерк',
+        'Ветка ярости для танка',
+        BERSERK_UNLOCK_COST,
+        this.progress.berserkUnlocked,
+        () => { this.progress.berserkUnlocked = true; },
+        this.progress.towerMaxLevel.cannon < 3,
+        'Режимы'
       );
+      const nextSpeedLevel = this.progress.speedLevel + 1;
+      add(
+        'speed',
+        `Ускорение x${GAME_SPEED_OPTIONS[nextSpeedLevel] || GAME_SPEED_OPTIONS.at(-1)}`,
+        'Ускорить игру',
+        SPEED_LEVEL_COSTS[this.progress.speedLevel],
+        this.progress.speedLevel >= SPEED_LEVEL_COSTS.length,
+        () => { this.progress.speedLevel++; },
+        false,
+        'Режимы'
+      );
+      const nextStartWaveLevel = this.progress.startWaveLevel + 1;
+      add(
+        'start-wave',
+        `Старт с ${START_WAVE_OPTIONS[nextStartWaveLevel] || START_WAVE_OPTIONS.at(-1)}`,
+        'Начало с высокой волны',
+        START_WAVE_COSTS[this.progress.startWaveLevel],
+        this.progress.startWaveLevel >= START_WAVE_COSTS.length,
+        () => {
+          this.progress.startWaveLevel++;
+          this.progress.selectedStartWave = getMaxStartWave(this.progress);
+        },
+        false,
+        'Режимы'
+      );
+      return items;
     }
 
-    add(
-      'effect-cannon',
-      'Удар ядра',
-      'Танк ур. 3 бьёт областью',
-      EFFECT_COSTS.cannonImpact,
-      this.progress.effects.cannonImpact,
-      () => { this.progress.effects.cannonImpact = true; },
-      this.progress.towerMaxLevel.cannon < 3
-    );
-    add(
-      'effect-dart',
-      'Перегрев дротиков',
-      'Быстрее и сильнее',
-      EFFECT_COSTS.dartOvercharge,
-      this.progress.effects.dartOvercharge,
-      () => { this.progress.effects.dartOvercharge = true; },
-      !this.progress.unlockedTowers.dart
-    );
-    add(
-      'effect-barrel',
-      'Склад бомб',
-      '+10 мин и радиус',
-      EFFECT_COSTS.barrelStockpile,
-      this.progress.effects.barrelStockpile,
-      () => { this.progress.effects.barrelStockpile = true; },
-      !this.progress.unlockedTowers.barrel
-    );
+    if (tab === 'cannon') {
+      add('effect-cannon', 'Удар ядра', 'Сплэш-урон', EFFECT_COSTS.cannonImpact,
+        this.progress.effects.cannonImpact, () => { this.progress.effects.cannonImpact = true; },
+        this.progress.towerMaxLevel.cannon < 3, 'Танк');
+      add('effect-cannon-pierce', 'Тяжелое ядро', 'Больше урона и радиус', EFFECT_COSTS.cannonPierce,
+        this.progress.effects.cannonPierce, () => { this.progress.effects.cannonPierce = true; },
+        !this.progress.effects.cannonImpact, 'Танк');
+      return items;
+    }
 
-    const nextSpeedLevel = this.progress.speedLevel + 1;
-    add(
-      'speed',
-      `Ускорение x${GAME_SPEED_OPTIONS[nextSpeedLevel] || GAME_SPEED_OPTIONS.at(-1)}`,
-      'Кнопка скорости',
-      SPEED_LEVEL_COSTS[this.progress.speedLevel],
-      this.progress.speedLevel >= SPEED_LEVEL_COSTS.length,
-      () => { this.progress.speedLevel++; }
-    );
+    if (tab === 'dart') {
+      add('effect-dart', 'Перегрев', 'Скорость и урон', EFFECT_COSTS.dartOvercharge,
+        this.progress.effects.dartOvercharge, () => { this.progress.effects.dartOvercharge = true; },
+        !this.progress.unlockedTowers.dart, 'Дротики');
+      add('effect-dart-poison', 'Ядовитые дротики', 'Урон со временем', EFFECT_COSTS.dartPoison,
+        this.progress.effects.dartPoison, () => { this.progress.effects.dartPoison = true; },
+        !this.progress.effects.dartOvercharge, 'Дротики');
+      add('effect-dart-slow', 'Ледяные дротики', 'Замедление врагов', EFFECT_COSTS.dartSlow,
+        this.progress.effects.dartSlow, () => { this.progress.effects.dartSlow = true; },
+        !this.progress.effects.dartPoison, 'Дротики');
+      return items;
+    }
 
-    const nextStartWaveLevel = this.progress.startWaveLevel + 1;
-    add(
-      'start-wave',
-      `Старт с ${START_WAVE_OPTIONS[nextStartWaveLevel] || START_WAVE_OPTIONS.at(-1)}`,
-      'Пропуск ранних волн',
-      START_WAVE_COSTS[this.progress.startWaveLevel],
-      this.progress.startWaveLevel >= START_WAVE_COSTS.length,
-      () => {
-        this.progress.startWaveLevel++;
-        this.progress.selectedStartWave = getMaxStartWave(this.progress);
-      }
-    );
+    if (tab === 'barrel') {
+      add('effect-barrel', 'Склад бомб', '+10 мин и радиус', EFFECT_COSTS.barrelStockpile,
+        this.progress.effects.barrelStockpile, () => { this.progress.effects.barrelStockpile = true; },
+        !this.progress.unlockedTowers.barrel, 'Бочкомет');
+      add('effect-barrel-napalm', 'Напалм', 'Поджог после взрыва', EFFECT_COSTS.barrelNapalm,
+        this.progress.effects.barrelNapalm, () => { this.progress.effects.barrelNapalm = true; },
+        !this.progress.effects.barrelStockpile, 'Бочкомет');
+      add('effect-barrel-snare', 'Осколочная сеть', 'Сильное замедление', EFFECT_COSTS.barrelSnare,
+        this.progress.effects.barrelSnare, () => { this.progress.effects.barrelSnare = true; },
+        !this.progress.effects.barrelNapalm, 'Бочкомет');
+    }
 
     return items;
   }
 
+  renderShopTabs() {
+    this.shopTabsEl.innerHTML = '';
+    for (const tab of this.getShopTabs()) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `shop-tab-btn${this.activeShopTab === tab.id ? ' active' : ''}`;
+      btn.textContent = tab.label;
+      btn.addEventListener('click', () => {
+        this.activeShopTab = tab.id;
+        this.renderShopTabs();
+        this.renderProgressShop();
+      });
+      this.shopTabsEl.appendChild(btn);
+    }
+  }
+
   renderProgressShop() {
     this.shopGridEl.innerHTML = '';
-    for (const item of this.getShopItems()) {
+    let lastBranch = '';
+    for (const item of this.getShopItems(this.activeShopTab)) {
+      if (item.branch && item.branch !== lastBranch) {
+        const title = document.createElement('div');
+        title.className = 'shop-tree-title';
+        title.textContent = `Ветка: ${item.branch}`;
+        this.shopGridEl.appendChild(title);
+        lastBranch = item.branch;
+      }
       const el = document.createElement('div');
       el.className = 'shop-item';
       const state = item.bought ? 'Куплено' : item.blocked ? 'Закрыто' : `${item.cost} жет.`;
@@ -1873,32 +2009,24 @@ class Game {
       }
       const affordable = this.gold >= cost;
       if (!affordable) btn.classList.add('disabled');
-      let dx = dir * 84 * (idx + 1);
-      let dy = -80 - idx * 56;
+      let dx = 0;
+      let dy = -30;
       if (layout === 'upgrade') {
-        const compactOffsetsByCount = {
-          1: [{ x: 0, y: 0 }],
-          2: [{ x: -10, y: 8 }, { x: 10, y: 8 }],
-          3: [{ x: 0, y: -10 }, { x: -10, y: 10 }, { x: 10, y: 10 }],
+        const upgradeOffsets = {
+          1: [{ x: 0, y: 2 }],
+          2: [{ x: -34, y: 2 }, { x: 34, y: 2 }],
+          3: [{ x: -34, y: -28 }, { x: 34, y: -28 }, { x: 0, y: 30 }],
         };
-        const compactOffsets = compactOffsetsByCount[options.length] || compactOffsetsByCount[3];
-        const offset = compactOffsets[Math.min(idx, compactOffsets.length - 1)];
+        const offset = (upgradeOffsets[options.length] || upgradeOffsets[3])[idx];
         dx = offset.x;
         dy = offset.y;
-        btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%) scale(0.6)`;
-      } else if (options.length === 3) {
-        const spacing = 63.2;
-        const triangleOffsets = dir === 1
-          ? [{ x: 0, y: -30 }, { x: spacing, y: -30 }, { x: spacing * 2, y: -30 }]
-          : dir === -1
-            ? [{ x: 0, y: -30 }, { x: -spacing, y: -30 }, { x: -spacing * 2, y: -30 }]
-            : [{ x: spacing, y: -30 }, { x: 0, y: -30 }, { x: -spacing, y: -30 }];
-        dx = triangleOffsets[idx].x;
-        dy = triangleOffsets[idx].y;
-        btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%) scale(0.6)`;
       } else {
-        btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%)`;
+        const gap = 74;
+        const total = options.length;
+        const start = -((total - 1) * gap) / 2;
+        dx = start + idx * gap;
       }
+      btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%)`;
       btn.innerHTML = `<img src="${option.icon}" alt=""><span class="cost">${cost}</span>`;
       btn.addEventListener('click', () => {
         const currentCost = typeof option.getCost === 'function' ? option.getCost() : option.cost;
