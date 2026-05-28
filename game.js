@@ -1352,11 +1352,12 @@ class Game {
         dy = offset.y;
         btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%) scale(0.6)`;
       } else if (options.length === 3) {
-        const triangleOffsets = [
-          { x: 20, y: -30 },
-          { x: 0, y: -30 },
-          { x: -20, y: -30 },
-        ];
+        const spacing = 63.2;
+        const triangleOffsets = dir === 1
+          ? [{ x: 0, y: -30 }, { x: spacing, y: -30 }, { x: spacing * 2, y: -30 }]
+          : dir === -1
+            ? [{ x: 0, y: -30 }, { x: -spacing, y: -30 }, { x: -spacing * 2, y: -30 }]
+            : [{ x: spacing, y: -30 }, { x: 0, y: -30 }, { x: -spacing, y: -30 }];
         dx = triangleOffsets[idx].x;
         dy = triangleOffsets[idx].y;
         btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%) scale(0.6)`;
