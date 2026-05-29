@@ -215,14 +215,14 @@ const PROGRESSION_DEFAULTS = {
     damageLevel: 0,
     rangeLevel: 0,
     discountLevel: 0,
-    utilityLevel: 0,
+    burnLevel: 0,
+    slowStackLevel: 0,
   },
   barrelTree: {
     cooldownLevel: 0,
     damageLevel: 0,
     discountLevel: 0,
     utilityLevel: 0,
-    berserkChoice: null,
     berserkUnlock: { sniper: 0, deployer: 0, booster: 0 },
   },
 };
@@ -264,7 +264,8 @@ const DART_TREE_COSTS = {
   damage: [140, 260, 400, 600, 880],
   range: [120, 230, 350, 520, 760],
   discount: [140, 260, 410, 620, 900],
-  utility: [220, 340, 520, 780, 1120],
+  burn: [220, 340, 520, 780, 1120],
+  slowStack: [220, 340, 520, 780, 1120],
 };
 const BARREL_TREE_COSTS = {
   cooldown: [140, 240, 360, 520, 760],
@@ -624,6 +625,9 @@ class Enemy {
     this.poisonTimer = 0;
     this.slowMultiplier = 1;
     this.slowTimer = 0;
+    this.slowStackCount = 0;
+    this.slowStackPer = 0;
+    this.slowStackTimer = 0;
 
     this.path = path;
     const start = cellCenter(this.path[0].col, this.path[0].row);
@@ -682,6 +686,13 @@ class Enemy {
     }
   }
 
+  applySlowStack(perStack, duration, maxStacks = 5) {
+    if (!this.alive) return;
+    this.slowStackPer = Math.max(this.slowStackPer, perStack);
+    this.slowStackCount = Math.min(maxStacks, this.slowStackCount + 1);
+    this.slowStackTimer = Math.max(this.slowStackTimer, duration);
+  }
+
   die() {
     if (!this.alive) return;
     this.alive = false;
@@ -703,6 +714,13 @@ class Enemy {
       this.slowTimer = Math.max(0, this.slowTimer - dt);
       if (this.slowTimer <= 0) {
         this.slowMultiplier = 1;
+      }
+    }
+    if (this.slowStackTimer > 0) {
+      this.slowStackTimer = Math.max(0, this.slowStackTimer - dt);
+      if (this.slowStackTimer <= 0) {
+        this.slowStackCount = 0;
+        this.slowStackPer = 0;
       }
     }
 
@@ -741,7 +759,9 @@ class Enemy {
       this.speed = this.baseSpeed;
     }
 
-    const advance = (this.speed * this.slowMultiplier * dt) / segmentLength;
+    const stackSlowMultiplier = Math.max(0.3, 1 - this.slowStackCount * this.slowStackPer);
+    const effectiveSlowMultiplier = Math.min(this.slowMultiplier, stackSlowMultiplier);
+    const advance = (this.speed * effectiveSlowMultiplier * dt) / segmentLength;
 
     this.progress += advance;
 
@@ -861,6 +881,13 @@ class Projectile {
       enemy.slowMultiplier = Math.min(enemy.slowMultiplier, this.effects.slowMultiplier);
       enemy.slowTimer = Math.max(enemy.slowTimer, this.effects.slowDuration);
     }
+    if (this.effects.slowStackPer > 0 && this.effects.slowStackDuration > 0) {
+      enemy.applySlowStack(
+        this.effects.slowStackPer,
+        this.effects.slowStackDuration,
+        this.effects.slowStackMax || 5
+      );
+    }
   }
 
   update(dt) {
@@ -916,6 +943,7 @@ class Projectile {
 
 class Tower {
   static DAMAGE_MULTIPLIER = 1.1;
+  static RANGE_UPGRADE_COSTS = [80, 160, 320];
   static MAX_BARREL_MINES = 30;
   static BARREL_MINE_CELL_OFFSET = TILE_SIZE * 0.28;
   static RANGE_UPGRADE_MULTIPLIER = 1.2;
@@ -934,6 +962,7 @@ class Tower {
     this.cooldown = 0;
     this.angle = 0;
     this.level = 1;
+    this.rangeUpgradeLevel = 0;
     this.berserkLevel = 0;
     this.berserkTimer = 0;
     this.berserkDurationCurrent = Tower.CANNON_BERSERK_BASE_DURATION;
@@ -953,6 +982,7 @@ class Tower {
     if (this.type === 'cannon' && this.isBerserkActive) {
       range *= 2;
     }
+    range *= 1 + this.rangeUpgradeLevel * 0.18;
     range *= this.game.getTowerRangeMultiplier?.(this.type) ?? 1;
     const aura = this.game.getBoosterAuraForTower?.(this) ?? 0;
     if (aura > 0) range *= 1 + aura * 0.5;
@@ -1044,13 +1074,16 @@ class Tower {
 
   getShotEffects() {
     const effects = {};
-    if (this.type === 'dart' && this.game.hasProgressEffect?.('dartPoison')) {
-      effects.poisonDps = Math.round(this.getDamage() * (this.game.hasProgressEffect?.('dartRupture') ? 0.36 : 0.25));
-      effects.poisonDuration = this.game.hasProgressEffect?.('dartRupture') ? 3.5 : 2.5;
+    if (this.type === 'dart' && (this.game.progress.dartTree.burnLevel || 0) > 0) {
+      const burnLevel = this.game.progress.dartTree.burnLevel || 0;
+      effects.poisonDps = Math.round(this.getDamage() * (0.14 + burnLevel * 0.06));
+      effects.poisonDuration = 2 + burnLevel * 0.35;
     }
-    if (this.type === 'dart' && this.game.hasProgressEffect?.('dartSlow')) {
-      effects.slowMultiplier = this.game.hasProgressEffect?.('dartPin') ? 0.56 : 0.68;
-      effects.slowDuration = this.game.hasProgressEffect?.('dartPin') ? 2.2 : 1.6;
+    if (this.type === 'dart' && (this.game.progress.dartTree.slowStackLevel || 0) > 0) {
+      const slowLevel = this.game.progress.dartTree.slowStackLevel || 0;
+      effects.slowStackPer = Math.min(0.1, 0.03 + slowLevel * 0.014);
+      effects.slowStackDuration = 1.2 + slowLevel * 0.24;
+      effects.slowStackMax = 5;
     }
     if (this.type === 'cannon' && this.game.hasProgressEffect?.('cannonBurn')) {
       effects.poisonDps = Math.round(this.getDamage() * 0.22);
@@ -1085,6 +1118,20 @@ class Tower {
     return this.config.upgradeCost?.[this.level + 1] ?? null;
   }
 
+  getRangeUpgradeCost() {
+    return Tower.RANGE_UPGRADE_COSTS[this.rangeUpgradeLevel] ?? null;
+  }
+
+  canUpgradeRange() {
+    return this.getRangeUpgradeCost() != null;
+  }
+
+  upgradeRange() {
+    if (!this.canUpgradeRange()) return false;
+    this.rangeUpgradeLevel++;
+    return true;
+  }
+
   canUpgrade() {
     return this.getUpgradeCost() != null;
   }
@@ -1110,8 +1157,6 @@ class Tower {
 
   canUpgradeBarrelBerserk(mode) {
     if (this.type !== 'barrel' || this.level < 3) return false;
-    const chosenMode = this.game.progress.barrelTree.berserkChoice;
-    if (chosenMode && chosenMode !== mode) return false;
     if (this.barrelBerserkMode && this.barrelBerserkMode !== mode) return false;
     const unlocked = this.game.progress.barrelTree.berserkUnlock[mode] || 0;
     return unlocked > 0 && this.barrelBerserkLevels[mode] < unlocked && this.barrelBerserkLevels[mode] < 5;
@@ -1126,10 +1171,6 @@ class Tower {
 
   upgradeBarrelBerserk(mode) {
     if (!this.canUpgradeBarrelBerserk(mode)) return false;
-    if (!this.game.progress.barrelTree.berserkChoice) {
-      this.game.progress.barrelTree.berserkChoice = mode;
-      this.game.saveProgress?.();
-    }
     this.barrelBerserkMode = mode;
     this.barrelBerserkLevels[mode]++;
     return true;
@@ -1660,11 +1701,11 @@ class Game {
     if (effect === 'cannonBurn') return this.progress.cannonTree.utilityLevel >= 3;
     if (effect === 'cannonSiege') return this.progress.cannonTree.utilityLevel >= 4;
     if (effect === 'cannonOverload') return this.progress.cannonTree.utilityLevel >= 5;
-    if (effect === 'dartOvercharge') return this.progress.dartTree.utilityLevel >= 1 || !!this.progress.effects.dartOvercharge;
-    if (effect === 'dartPoison') return this.progress.dartTree.utilityLevel >= 2 || !!this.progress.effects.dartPoison;
-    if (effect === 'dartSlow') return this.progress.dartTree.utilityLevel >= 3 || !!this.progress.effects.dartSlow;
-    if (effect === 'dartRupture') return this.progress.dartTree.utilityLevel >= 4;
-    if (effect === 'dartPin') return this.progress.dartTree.utilityLevel >= 5;
+    if (effect === 'dartOvercharge') return this.progress.dartTree.cooldownLevel >= 1 || !!this.progress.effects.dartOvercharge;
+    if (effect === 'dartPoison') return this.progress.dartTree.burnLevel >= 1 || !!this.progress.effects.dartPoison;
+    if (effect === 'dartSlow') return this.progress.dartTree.slowStackLevel >= 1 || !!this.progress.effects.dartSlow;
+    if (effect === 'dartRupture') return this.progress.dartTree.burnLevel >= 3;
+    if (effect === 'dartPin') return this.progress.dartTree.slowStackLevel >= 3;
     if (effect === 'barrelStockpile') return this.progress.barrelTree.utilityLevel >= 1;
     if (effect === 'barrelNapalm') return this.progress.barrelTree.utilityLevel >= 2;
     if (effect === 'barrelSnare') return this.progress.barrelTree.utilityLevel >= 3;
@@ -2015,23 +2056,42 @@ class Game {
           'Скидка'
         );
       }
-      const utilityDetails = [
-        'Перегрев: КД -15%, +8% урон',
-        'Яд: 2.5 сек, 25% урона/сек',
-        'Лёд: 68% скорости на 1.6 сек',
-        'Разрыв: яд 3.5 сек, 36% урона/сек',
-        'Приковка: 56% скорости на 2.2 сек',
+      const burnDetails = [
+        'Горение: 2.35 сек, 20% урона/сек',
+        'Горение: 2.70 сек, 26% урона/сек',
+        'Горение: 3.05 сек, 32% урона/сек',
+        'Горение: 3.40 сек, 38% урона/сек',
+        'Горение: 3.75 сек, 44% урона/сек',
       ];
       for (let lvl = 1; lvl <= 5; lvl++) {
         add(
-          `dart-utility-${lvl}`,
-          `Утилита ${lvl}/5`,
-          utilityDetails[lvl - 1],
-          DART_TREE_COSTS.utility[lvl - 1],
-          d.utilityLevel >= lvl,
-          () => { d.utilityLevel = lvl; },
-          !unlocked || d.utilityLevel < lvl - 1,
-          'Уникальная линия'
+          `dart-burn-${lvl}`,
+          `Горение ${lvl}/5`,
+          burnDetails[lvl - 1],
+          DART_TREE_COSTS.burn[lvl - 1],
+          d.burnLevel >= lvl,
+          () => { d.burnLevel = lvl; },
+          !unlocked || d.burnLevel < lvl - 1,
+          'Горение'
+        );
+      }
+      const slowStackDetails = [
+        'Стак-слоу: 4% за стак, до 5, 1.44 сек',
+        'Стак-слоу: 5.8% за стак, до 5, 1.68 сек',
+        'Стак-слоу: 7.2% за стак, до 5, 1.92 сек',
+        'Стак-слоу: 8.6% за стак, до 5, 2.16 сек',
+        'Стак-слоу: 10% за стак, до 5, 2.40 сек',
+      ];
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `dart-slowstack-${lvl}`,
+          `Стаки слоу ${lvl}/5`,
+          slowStackDetails[lvl - 1],
+          DART_TREE_COSTS.slowStack[lvl - 1],
+          d.slowStackLevel >= lvl,
+          () => { d.slowStackLevel = lvl; },
+          !unlocked || d.slowStackLevel < lvl - 1,
+          'Стаки замедления'
         );
       }
       return items;
@@ -2104,7 +2164,6 @@ class Game {
         { key: 'booster', title: 'Берсерк: Мехабустер', costs: BARREL_TREE_COSTS.berserkBooster },
       ];
       for (const branch of berserkBranches) {
-        if (b.berserkChoice && b.berserkChoice !== branch.key) continue;
         for (let lvl = 1; lvl <= 5; lvl++) {
           add(
             `barrel-berserk-${branch.key}-${lvl}`,
@@ -2112,10 +2171,7 @@ class Game {
             'Открывает уровень ветки для боевого апгрейда',
             branch.costs[lvl - 1],
             b.berserkUnlock[branch.key] >= lvl,
-            () => {
-              if (!b.berserkChoice) b.berserkChoice = branch.key;
-              b.berserkUnlock[branch.key] = lvl;
-            },
+            () => { b.berserkUnlock[branch.key] = lvl; },
             !unlocked || b.berserkUnlock[branch.key] < lvl - 1,
             branch.title
           );
@@ -2567,13 +2623,23 @@ class Game {
     this.renderRadialMenu();
   }
 
+  upgradeTowerRange(tower) {
+    if (!tower.canUpgradeRange()) return;
+    const baseCost = tower.getRangeUpgradeCost();
+    const cost = Math.round(baseCost * this.getTowerDiscountMultiplier(tower.type));
+    if (this.gold < cost) return;
+    this.gold -= cost;
+    tower.upgradeRange();
+    this.updateHud();
+    this.renderRadialMenu();
+  }
+
   getTowerUpgradeIcon(tower) {
-    const nextLevel = tower.level + 1;
-    if (tower.type === 'dart' && nextLevel > 3) {
-      const rank = String(Math.min(3, nextLevel - 3)).padStart(3, '0');
-      return `assets/kenney_ranks-pack/PNG/Retina/Gold/rank${rank}.png`;
-    }
     return 'assets/kenney_game-icons/PNG/White/2x/arrowUp.png';
+  }
+
+  getTowerRangeUpgradeIcon() {
+    return 'assets/kenney_game-icons/PNG/White/2x/zoomIn.png';
   }
 
   upgradeBerserk(tower) {
@@ -2621,6 +2687,17 @@ class Game {
         },
         icon: this.getTowerUpgradeIcon(tower),
         action: () => this.upgradeTower(tower),
+      });
+    }
+    if (tower.canUpgradeRange()) {
+      options.push({
+        getCost: () => {
+          const base = tower.getRangeUpgradeCost();
+          if (base == null) return null;
+          return Math.round(base * this.getTowerDiscountMultiplier(tower.type));
+        },
+        icon: this.getTowerRangeUpgradeIcon(),
+        action: () => this.upgradeTowerRange(tower),
       });
     }
     if (tower.canUpgradeBerserk()) {
