@@ -2,6 +2,7 @@ const GRID_COLS = 22;
 const GRID_ROWS = 14;
 const TILE_SIZE = 48;
 const GOLD_UPGRADE_COST_MULTIPLIER = 2.6;
+const CANNON_PURCHASE_COST_MULTIPLIER = 1.8;
 const ASSET_SCALE = TILE_SIZE / 128;
 const ASSET_BASE = 'assets/PNG/Retina/';
 const TANK_SPRITE_FACING = Math.PI / 2;
@@ -2046,6 +2047,13 @@ class Game {
     return Math.max(1, Math.round(baseCost * GOLD_UPGRADE_COST_MULTIPLIER));
   }
 
+  scaleTowerPurchaseCost(type, baseCost) {
+    const mult = type === 'cannon'
+      ? CANNON_PURCHASE_COST_MULTIPLIER
+      : GOLD_UPGRADE_COST_MULTIPLIER;
+    return Math.max(1, Math.round(baseCost * mult));
+  }
+
   syncStartPreviewStats() {
     if (this.started) return;
     this.wave = this.progress.selectedStartWave;
@@ -3033,7 +3041,7 @@ class Game {
     }
 
     const buyCost = Math.round(cfg.cost * this.getTowerDiscountMultiplier(towerType));
-    const finalBuyCost = this.scaleGoldCost(buyCost);
+    const finalBuyCost = this.scaleTowerPurchaseCost(towerType, buyCost);
     if (this.gold < finalBuyCost) {
       this.showHint('Недостаточно золота');
       return;
@@ -3106,8 +3114,8 @@ class Game {
       .filter(([type]) => this.isTowerUnlocked(type))
       .map(([type, cfg]) => ({
         cost: type === 'barrel'
-          ? this.scaleGoldCost(Math.round(cfg.cost * this.getBarrelDiscountMultiplier()))
-          : this.scaleGoldCost(Math.round(cfg.cost * this.getTowerDiscountMultiplier(type))),
+          ? this.scaleTowerPurchaseCost(type, Math.round(cfg.cost * this.getBarrelDiscountMultiplier()))
+          : this.scaleTowerPurchaseCost(type, Math.round(cfg.cost * this.getTowerDiscountMultiplier(type))),
         icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
         iconOffsetY: cfg.shopIconOffsetY || 0,
         action: () => this.confirmPurchase(slot, type),
