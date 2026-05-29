@@ -585,7 +585,7 @@ function getSandBaseHp(wave) {
 class Enemy {
   static HEAL_RADIUS = 170;
   static HEAL_AMOUNT = 8;
-  static HEAL_FLASH_DURATION = 0.2;
+  static HEAL_FLASH_DURATION = 1.1;
   static BOSS_SYNC_GAP = 0.45;
   static FAST_PACK_LOOKAHEAD = 1.8;
   static FAST_PACK_MIN_COUNT = 2;
@@ -781,7 +781,7 @@ class Enemy {
           const dist = Math.hypot(other.x - this.x, other.y - this.y);
           if (dist <= Enemy.HEAL_RADIUS) {
             other.hp = Math.min(other.maxHp, other.hp + this.healAmount);
-            other.healFlashTimer = Enemy.HEAL_FLASH_DURATION;
+            other.healFlashTimer = Math.max(other.healFlashTimer, Enemy.HEAL_FLASH_DURATION);
           }
         }
       }
@@ -828,7 +828,7 @@ class Enemy {
       ctx.fillStyle = '#333';
       ctx.fillRect(barX, barY, barW, barH);
       const barColors = { blue: '#3498db', dark: '#8e44ad', sand: '#f39c12' };
-      ctx.fillStyle = barColors[this.type] || '#e74c3c';
+      ctx.fillStyle = this.healFlashTimer > 0 ? '#2ecc71' : (barColors[this.type] || '#e74c3c');
       ctx.fillRect(barX, barY, barW * (this.hp / this.maxHp), barH);
     }
   }
@@ -1587,7 +1587,9 @@ class Game {
   }
 
   getStartingGold() {
-    return 90 + this.progress.stats.economy * 45 + (this.progress.selectedStartWave - 1) * 16;
+    const waveOffset = Math.max(0, this.progress.selectedStartWave - 1);
+    const waveBonusGold = Math.round(waveOffset * 28 + waveOffset * waveOffset * 0.6);
+    return 90 + this.progress.stats.economy * 45 + waveBonusGold;
   }
 
   getStartingLives() {
