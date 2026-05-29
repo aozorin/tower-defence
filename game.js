@@ -1665,6 +1665,7 @@ class Game {
     this.runRewarded = false;
     this.runStartWave = this.progress.selectedStartWave;
     this.runKills = 0;
+    this.runKillTokenScore = 0;
     this.runWaveClears = 0;
     this.runTokenReward = 0;
     this.runGoldEarned = 0;
@@ -1790,10 +1791,24 @@ class Game {
     return Math.round((24 + this.wave * 8) * (1 + lvl * 0.75));
   }
 
+  getLifeLossBountyFor(level, waveRef = null) {
+    const lvl = Math.max(0, level || 0);
+    if (lvl <= 0) return 0;
+    const wave = waveRef ?? this.progress.selectedStartWave ?? 1;
+    return Math.round((24 + wave * 8) * (1 + lvl * 0.75));
+  }
+
   getKillBountyBonus() {
     const lvl = this.progress.killBountyLevel || 0;
     if (lvl <= 0) return 0;
     return Math.round(2 + lvl * 2 + this.wave * (0.4 + lvl * 0.12));
+  }
+
+  getKillBountyBonusFor(level, waveRef = null) {
+    const lvl = Math.max(0, level || 0);
+    if (lvl <= 0) return 0;
+    const wave = waveRef ?? this.progress.selectedStartWave ?? 1;
+    return Math.round(2 + lvl * 2 + wave * (0.4 + lvl * 0.12));
   }
 
   getStartingGold() {
@@ -2124,10 +2139,11 @@ class Game {
         );
       }
       for (let lvl = 1; lvl <= LIFE_BOUNTY_COSTS.length; lvl++) {
+        const lifeBounty = this.getLifeLossBountyFor(lvl);
         add(
           `meta-life-bounty-${lvl}`,
           `Кэшбэк жизни ${lvl}/${LIFE_BOUNTY_COSTS.length}`,
-          `золото за потерю жизни: уровень ${lvl}`,
+          `+${lifeBounty} золота за потерю жизни`,
           LIFE_BOUNTY_COSTS[lvl - 1],
           (this.progress.lifeBountyLevel || 0) >= lvl,
           () => { this.progress.lifeBountyLevel = lvl; },
@@ -2136,10 +2152,11 @@ class Game {
         );
       }
       for (let lvl = 1; lvl <= KILL_BOUNTY_COSTS.length; lvl++) {
+        const killBounty = this.getKillBountyBonusFor(lvl);
         add(
           `meta-kill-bounty-${lvl}`,
           `Bounty убийств ${lvl}/${KILL_BOUNTY_COSTS.length}`,
-          `+золото за убийство: уровень ${lvl}`,
+          `+${killBounty} золота за убийство`,
           KILL_BOUNTY_COSTS[lvl - 1],
           (this.progress.killBountyLevel || 0) >= lvl,
           () => { this.progress.killBountyLevel = lvl; },
@@ -2767,16 +2784,23 @@ class Game {
   registerKill(enemy) {
     if (!enemy) return;
     this.runKills++;
+    const tokenByType = {
+      blue: 0.03,
+      red: 0.12,
+      sand: 0.16,
+      green: 0.18,
+      dark: 1.4,
+    };
+    this.runKillTokenScore += tokenByType[enemy.type] ?? 0.1;
   }
 
   calculateTokenReward() {
     const wavesPlayed = Math.max(0, this.highestWaveThisRun - this.runStartWave + 1);
-    const waveReward = this.runWaveClears * 60 + Math.round(wavesPlayed ** 1.7 * 45);
-    const killReward = this.runKills * 5;
-    const goldReward = Math.round(this.runGoldEarned * 0.35);
-    const milestoneBonus = Math.round(Math.max(0, this.highestWaveThisRun - this.progress.bestWave) * 220);
-    const activityFloor = this.runKills > 0 || this.runWaveClears > 0 ? 20 : 0;
-    return Math.max(0, activityFloor + waveReward + killReward + goldReward + milestoneBonus);
+    const waveReward = this.runWaveClears * 7 + Math.round(wavesPlayed ** 1.22 * 6);
+    const killReward = Math.ceil(this.runKillTokenScore);
+    const milestoneBonus = Math.round(Math.max(0, this.highestWaveThisRun - this.progress.bestWave) * 12);
+    const activityFloor = this.runKills > 0 || this.runWaveClears > 0 ? 3 : 0;
+    return Math.max(0, activityFloor + waveReward + killReward + milestoneBonus);
   }
 
   getTowerSellRefund(tower) {
@@ -3099,7 +3123,7 @@ class Game {
     this.progress.runs++;
     this.progress.bestWave = Math.max(this.progress.bestWave, this.highestWaveThisRun);
     this.saveProgress();
-    this.runRewardEl.textContent = `Жетоны: +${reward} (убийства: ${this.runKills}, волны: ${this.runWaveClears})`;
+    this.runRewardEl.textContent = `Жетоны: +${reward} (убийства: ${this.runKills}, волны: ${this.runWaveClears}, bounty: ${Math.ceil(this.runKillTokenScore)})`;
     this.updateProgressUi();
   }
 
@@ -3120,6 +3144,7 @@ class Game {
     this.lives = this.getStartingLives();
     this.runRewarded = false;
     this.runKills = 0;
+    this.runKillTokenScore = 0;
     this.runWaveClears = 0;
     this.runTokenReward = 0;
     this.runGoldEarned = 0;
