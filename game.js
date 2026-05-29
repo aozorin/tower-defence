@@ -1,6 +1,7 @@
 const GRID_COLS = 22;
 const GRID_ROWS = 14;
 const TILE_SIZE = 48;
+const GOLD_UPGRADE_COST_MULTIPLIER = 2.6;
 const ASSET_SCALE = TILE_SIZE / 128;
 const ASSET_BASE = 'assets/PNG/Retina/';
 const TANK_SPRITE_FACING = Math.PI / 2;
@@ -918,9 +919,9 @@ class Enemy {
       const t = performance.now() * 0.02;
       const alpha = 0.34 + 0.28 * Math.abs(Math.sin(t));
       const trackImg = images.tracksSmall;
-      const tw = trackImg.width * ASSET_SCALE * 1.38;
-      const th = trackImg.height * ASSET_SCALE * 1.38;
-      const backOffset = h * 0.36;
+      const tw = trackImg.width * ASSET_SCALE * 1.22;
+      const th = trackImg.height * ASSET_SCALE * 1.22;
+      const backOffset = h * 0.56;
       const tx = this.x - Math.cos(facingAngle) * backOffset;
       const ty = this.y - Math.sin(facingAngle) * backOffset;
       ctx.save();
@@ -929,8 +930,8 @@ class Enemy {
       ctx.restore();
 
       // Speed particles: small dust bits behind tracks while accelerated.
-      const pxBase = tx - Math.cos(facingAngle) * (tw * 0.24);
-      const pyBase = ty - Math.sin(facingAngle) * (th * 0.24);
+      const pxBase = tx - Math.cos(facingAngle) * (tw * 0.38);
+      const pyBase = ty - Math.sin(facingAngle) * (th * 0.38);
       for (let i = 0; i < 4; i++) {
         const p = performance.now() * 0.004 + i * 1.7;
         const side = i % 2 === 0 ? 1 : -1;
@@ -2041,6 +2042,10 @@ class Game {
     return 1;
   }
 
+  scaleGoldCost(baseCost) {
+    return Math.max(1, Math.round(baseCost * GOLD_UPGRADE_COST_MULTIPLIER));
+  }
+
   syncStartPreviewStats() {
     if (this.started) return;
     this.wave = this.progress.selectedStartWave;
@@ -3028,14 +3033,15 @@ class Game {
     }
 
     const buyCost = Math.round(cfg.cost * this.getTowerDiscountMultiplier(towerType));
-    if (this.gold < buyCost) {
+    const finalBuyCost = this.scaleGoldCost(buyCost);
+    if (this.gold < finalBuyCost) {
       this.showHint('Недостаточно золота');
       return;
     }
 
-    this.gold -= buyCost;
+    this.gold -= finalBuyCost;
     const tower = new Tower(col, row, this, towerType);
-    tower.spentGold = buyCost;
+    tower.spentGold = finalBuyCost;
     this.towers.push(tower);
     this.updateHud();
     this.closeRadialMenu();
@@ -3044,7 +3050,7 @@ class Game {
   upgradeTower(tower) {
     if (!tower.canUpgrade()) return;
     const baseCost = tower.getUpgradeCost();
-    const cost = Math.round(baseCost * this.getTowerDiscountMultiplier(tower.type));
+    const cost = this.scaleGoldCost(Math.round(baseCost * this.getTowerDiscountMultiplier(tower.type)));
     if (this.gold < cost) return;
     this.gold -= cost;
     tower.upgrade();
@@ -3056,7 +3062,7 @@ class Game {
   upgradeTowerRange(tower) {
     if (!tower.canUpgradeRange()) return;
     const baseCost = tower.getRangeUpgradeCost();
-    const cost = Math.round(baseCost * this.getTowerDiscountMultiplier(tower.type));
+    const cost = this.scaleGoldCost(Math.round(baseCost * this.getTowerDiscountMultiplier(tower.type)));
     if (this.gold < cost) return;
     this.gold -= cost;
     tower.upgradeRange();
@@ -3075,7 +3081,7 @@ class Game {
 
   upgradeBerserk(tower) {
     if (!tower.canUpgradeBerserk()) return;
-    const cost = tower.getBerserkUpgradeCost();
+    const cost = this.scaleGoldCost(tower.getBerserkUpgradeCost());
     if (this.gold < cost) return;
     this.gold -= cost;
     tower.upgradeBerserk();
@@ -3085,7 +3091,7 @@ class Game {
   }
 
   upgradeBarrelBerserk(tower, mode) {
-    const cost = tower.getBarrelBerserkCost(mode);
+    const cost = this.scaleGoldCost(tower.getBarrelBerserkCost(mode));
     if (cost == null || this.gold < cost) return;
     this.gold -= cost;
     tower.upgradeBarrelBerserk(mode);
@@ -3100,8 +3106,8 @@ class Game {
       .filter(([type]) => this.isTowerUnlocked(type))
       .map(([type, cfg]) => ({
         cost: type === 'barrel'
-          ? Math.round(cfg.cost * this.getBarrelDiscountMultiplier())
-          : Math.round(cfg.cost * this.getTowerDiscountMultiplier(type)),
+          ? this.scaleGoldCost(Math.round(cfg.cost * this.getBarrelDiscountMultiplier()))
+          : this.scaleGoldCost(Math.round(cfg.cost * this.getTowerDiscountMultiplier(type))),
         icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
         iconOffsetY: cfg.shopIconOffsetY || 0,
         action: () => this.confirmPurchase(slot, type),
@@ -3116,7 +3122,7 @@ class Game {
         getCost: () => {
           const base = tower.getUpgradeCost();
           if (base == null) return null;
-          return Math.round(base * this.getTowerDiscountMultiplier(tower.type));
+          return this.scaleGoldCost(Math.round(base * this.getTowerDiscountMultiplier(tower.type)));
         },
         icon: this.getTowerUpgradeIcon(tower),
         action: () => this.upgradeTower(tower),
@@ -3127,7 +3133,7 @@ class Game {
         getCost: () => {
           const base = tower.getRangeUpgradeCost();
           if (base == null) return null;
-          return Math.round(base * this.getTowerDiscountMultiplier(tower.type));
+          return this.scaleGoldCost(Math.round(base * this.getTowerDiscountMultiplier(tower.type)));
         },
         icon: this.getTowerRangeUpgradeIcon(),
         action: () => this.upgradeTowerRange(tower),
@@ -3135,7 +3141,7 @@ class Game {
     }
     if (tower.canUpgradeBerserk()) {
       options.push({
-        getCost: () => tower.getBerserkUpgradeCost(),
+        getCost: () => this.scaleGoldCost(tower.getBerserkUpgradeCost()),
         icon: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank001.png',
         action: () => this.upgradeBerserk(tower),
       });
@@ -3149,7 +3155,7 @@ class Game {
       for (const entry of barrelModes) {
         if (!tower.canUpgradeBarrelBerserk(entry.mode)) continue;
         options.push({
-          getCost: () => tower.getBarrelBerserkCost(entry.mode),
+          getCost: () => this.scaleGoldCost(tower.getBarrelBerserkCost(entry.mode)),
           icon: entry.icon,
           action: () => this.upgradeBarrelBerserk(tower, entry.mode),
         });
