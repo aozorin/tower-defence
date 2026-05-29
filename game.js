@@ -942,11 +942,11 @@ class Enemy {
 
       if (images.treeGreen_large) {
         const pulse = 0.82 + 0.18 * Math.abs(Math.sin(performance.now() * 0.018));
-        const tw = images.treeGreen_large.width * ASSET_SCALE * 0.7;
-        const th = images.treeGreen_large.height * ASSET_SCALE * 0.7;
+        const tw = images.treeGreen_large.width * ASSET_SCALE * 0.6;
+        const th = images.treeGreen_large.height * ASSET_SCALE * 0.6;
         ctx.save();
         ctx.globalAlpha = 0.18 + 0.24 * alpha * pulse;
-        ctx.drawImage(images.treeGreen_large, this.x - tw / 2, this.y - h * 0.95 - th / 2, tw, th);
+        ctx.drawImage(images.treeGreen_large, this.x - tw / 2, this.y - th / 2, tw, th);
         ctx.restore();
       }
     }
@@ -954,11 +954,11 @@ class Enemy {
     if (this.alive && (this.slowTimer > 0 || this.slowStackCount > 0) && images.oilSpill_small) {
       const baseAlpha = this.slowTimer > 0 ? 0.28 : 0.18;
       const pulse = 0.85 + 0.15 * Math.abs(Math.sin(performance.now() * 0.014));
-      const sw = images.oilSpill_small.width * ASSET_SCALE * 0.86;
-      const sh = images.oilSpill_small.height * ASSET_SCALE * 0.86;
+      const sw = images.oilSpill_small.width * ASSET_SCALE * 0.72;
+      const sh = images.oilSpill_small.height * ASSET_SCALE * 0.72;
       ctx.save();
       ctx.globalAlpha = baseAlpha * pulse;
-      ctx.drawImage(images.oilSpill_small, this.x - sw / 2, this.y - h * 0.98 - sh / 2, sw, sh);
+      ctx.drawImage(images.oilSpill_small, this.x - sw / 2, this.y - sh / 2, sw, sh);
       ctx.restore();
     }
 
