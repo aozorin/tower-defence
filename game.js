@@ -39,8 +39,8 @@ const PATHS = [
 
 const BASE_COL = 11;
 const BASE_ROW = 13;
-const MAIN_BASE_JUNCTION = { col: 11, row: 10, tile: 'tileGrass_roadSplitS' };
-const RIGHT_BASE_JUNCTION = { col: 13, row: 10, tile: 'tileGrass_roadSplitN' };
+const MAIN_BASE_JUNCTION = { col: 11, row: 10, tile: 'tileSand_roadSplitS' };
+const RIGHT_BASE_JUNCTION = { col: 13, row: 10, tile: 'tileSand_roadSplitN' };
 
 function cellCenter(col, row) {
   return {
@@ -79,6 +79,7 @@ const ENEMY_TYPES = {
   blue: { sprite: 'tank_blue', speed: 145, hp: 14, gold: 6 },
   dark: { sprite: 'tank_dark', speed: 40, hp: 300, gold: 80 },
   sand: { sprite: 'tank_sand', speed: 65, hp: 40, gold: 18 },
+  green: { sprite: 'tank_green', speed: 55, hp: 56, gold: 22 },
 };
 
 const TOWER_TYPES = {
@@ -86,16 +87,17 @@ const TOWER_TYPES = {
     label: 'Танк',
     cost: 50,
     description: 'Сильные снаряды',
-    shopSprite: 'tank_green',
+    shopSprite: 'tankBody_sand_outline',
     shopIconOffsetY: 4,
-    bodySprite: 'tank_green',
+    bodySprite: 'tankBody_sand_outline',
+    barrels: { 1: 'tankSand_barrel2_outline', 2: 'tankSand_barrel3_outline', 3: 'tankSand_barrel1_outline' },
     range: 120,
     fireCooldown: 0.6,
     projectileSpeed: 280,
     projectiles: {
-      1: 'bulletGreen1',
-      2: 'bulletGreen1_outline',
-      3: 'bulletGreen3_outline',
+      1: 'bulletSand3_outline',
+      2: 'bulletSand1_outline',
+      3: 'bulletSand2_outline',
     },
     damage: { 1: 10, 2: 16, 3: 26 },
     upgradeCost: { 2: 60, 3: 120 },
@@ -106,29 +108,31 @@ const TOWER_TYPES = {
       damageMultiplier: { 1: 4, 2: 5, 3: 6, 4: 8 },
       fireCooldownMultiplier: 0.7,
       projectiles: {
-        1: 'shotThin',
-        2: 'shotLarge',
-        3: 'shotOrange',
-        4: 'shotRed',
+        1: 'bulletDark3_outline',
+        2: 'bulletDark1_outline',
+        3: 'bulletDark2_outline',
+        4: 'bulletDark2_outline',
       },
-      bodySprite: 'tank_bigRed',
+      bodySprite: 'tankBody_dark_outline',
+      barrels: { 1: 'tankDark_barrel2_outline', 2: 'tankDark_barrel3_outline', 3: 'tankDark_barrel1_outline', 4: 'tankDark_barrel1_outline' },
     },
   },
   dart: {
     label: 'Дротики',
     cost: 150,
     description: 'Очень быстрая стрельба',
-    shopSprite: 'tankBody_bigRed',
-    bodySprite: 'tankBody_bigRed',
+    shopSprite: 'tankBody_blue_outline',
+    bodySprite: 'tankBody_blue_outline',
+    barrels: { 1: 'tankBlue_barrel2_outline', 2: 'tankBlue_barrel3_outline', 3: 'tankBlue_barrel1_outline', 4: 'tankBlue_barrel1_outline', 5: 'tankBlue_barrel1_outline' },
     range: 110,
     fireCooldown: 0.12,
     projectileSpeed: 440,
     projectiles: {
-      1: 'specialBarrel6',
-      2: 'specialBarrel7',
-      3: 'specialBarrel7_outline',
-      4: 'shotLarge',
-      5: 'shotRed',
+      1: 'bulletBlue3_outline',
+      2: 'bulletBlue1_outline',
+      3: 'bulletBlue2_outline',
+      4: 'bulletBlue2_outline',
+      5: 'bulletBlue2_outline',
     },
     damage: { 1: 5, 2: 8, 3: 13, 4: 34, 5: 86 },
     splashRadius: { 4: 46, 5: 76 },
@@ -138,17 +142,18 @@ const TOWER_TYPES = {
     label: 'Бочкомёт',
     cost: 120,
     description: 'Взрывные бочки',
-    shopSprite: 'tankBody_darkLarge_outline',
+    shopSprite: 'tankBody_green_outline',
     shopIconOffsetY: -4,
-    bodySprite: 'tankBody_darkLarge_outline',
+    bodySprite: 'tankBody_green_outline',
+    barrels: { 1: 'tankGreen_barrel2_outline', 2: 'tankGreen_barrel3_outline', 3: 'tankGreen_barrel1_outline' },
     range: 300,
     fireCooldown: { 1: 3, 2: 2.5, 3: 2 },
     projectileSpeed: 200,
     splashRadius: { 1: 50, 2: 65, 3: 85 },
     projectiles: {
-      1: 'barrelBlack_side',
-      2: 'barrelBlack_side',
-      3: 'barrelBlack_side',
+      1: 'barrelRust_top',
+      2: 'barrelGreen_top',
+      3: 'barrelGreen_side',
     },
     damage: { 1: 18, 2: 30, 3: 48 },
     upgradeCost: { 2: 80, 3: 160 },
@@ -342,30 +347,53 @@ const ASSET_KEYS = [
   'tileGrass_transitionN',
   'tileGrass_transitionS',
   'tileGrass_transitionW',
-  'tileGrass_roadEast',
-  'tileGrass_roadNorth',
-  'tileGrass_roadCrossing',
-  'tileGrass_roadSplitN',
-  'tileGrass_roadSplitS',
-  'tileGrass_roadCornerUL',
-  'tileGrass_roadCornerUR',
-  'tileGrass_roadCornerLL',
-  'tileGrass_roadCornerLR',
+  'tileSand_roadEast',
+  'tileSand_roadNorth',
+  'tileSand_roadCrossing',
+  'tileSand_roadSplitN',
+  'tileSand_roadSplitS',
+  'tileSand_roadCornerUL',
+  'tileSand_roadCornerUR',
+  'tileSand_roadCornerLL',
+  'tileSand_roadCornerLR',
   'tank_red',
   'tank_blue',
   'tank_dark',
   'tank_sand',
   'tank_green',
-  'tank_bigRed',
-  'tankBody_bigRed',
-  'tankBody_darkLarge_outline',
-  'bulletGreen1',
+  'tankBody_blue_outline',
+  'tankBody_dark_outline',
+  'tankBody_green_outline',
+  'tankBody_sand_outline',
+  'tankBlue_barrel1_outline',
+  'tankBlue_barrel2_outline',
+  'tankBlue_barrel3_outline',
+  'tankDark_barrel1_outline',
+  'tankDark_barrel2_outline',
+  'tankDark_barrel3_outline',
+  'tankGreen_barrel1_outline',
+  'tankGreen_barrel2_outline',
+  'tankGreen_barrel3_outline',
+  'tankSand_barrel1_outline',
+  'tankSand_barrel2_outline',
+  'tankSand_barrel3_outline',
+  'bulletBlue1_outline',
+  'bulletBlue2_outline',
+  'bulletBlue3_outline',
+  'bulletDark1_outline',
+  'bulletDark2_outline',
+  'bulletDark3_outline',
   'bulletGreen1_outline',
+  'bulletGreen2_outline',
   'bulletGreen3_outline',
-  'specialBarrel6',
-  'specialBarrel7',
-  'specialBarrel7_outline',
-  'barrelBlack_side',
+  'bulletSand1_outline',
+  'bulletSand2_outline',
+  'bulletSand3_outline',
+  'barrelRust_top',
+  'barrelGreen_top',
+  'barrelGreen_side',
+  'shotOrange',
+  'shotRed',
   'explosionSmoke1',
   'explosionSmoke2',
   'explosionSmoke3',
@@ -376,10 +404,6 @@ const ASSET_KEYS = [
   'explosion3',
   'explosion4',
   'explosion5',
-  'shotThin',
-  'shotLarge',
-  'shotOrange',
-  'shotRed',
 ];
 
 function buildRoadCells() {
@@ -523,7 +547,7 @@ class BarrelExplosion {
 class BarrelMine {
   static TRIGGER_RADIUS = 22;
 
-  constructor(x, y, damage, splashRadius, ownerTower, col = null, row = null) {
+  constructor(x, y, damage, splashRadius, ownerTower, spriteKey, col = null, row = null) {
     this.x = x;
     this.y = y;
     this.col = col;
@@ -531,6 +555,7 @@ class BarrelMine {
     this.damage = damage;
     this.splashRadius = splashRadius;
     this.ownerTower = ownerTower;
+    this.spriteKey = spriteKey;
     this.spent = false;
     this.rotation = Math.random() * Math.PI * 2;
   }
@@ -563,7 +588,7 @@ class BarrelMine {
 
   draw(ctx, images) {
     if (this.spent) return;
-    const img = images.barrelBlack_side;
+    const img = images[this.spriteKey] || images.barrelGreen_side;
     const w = img.width * ASSET_SCALE * 1.25;
     const h = img.height * ASSET_SCALE * 1.25;
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.rotation);
@@ -593,6 +618,10 @@ class Enemy {
   static HEALER_MIN_SPEED_MULT = 0.6;
   static HEALER_MAX_SPEED_MULT = 1.9;
   static GOLD_REWARD_MULTIPLIER = 1.3;
+  static GREEN_AURA_RADIUS = 165;
+  static GREEN_AURA_DURATION = 0.28;
+  static GREEN_AURA_MIN_MULT = 1.12;
+  static GREEN_AURA_MAX_MULT = 1.72;
 
   constructor(game, type = 'red', path = PATHS[0], pathOffset = 0, wave = 1) {
     const cfg = ENEMY_TYPES[type];
@@ -628,6 +657,8 @@ class Enemy {
     this.slowStackCount = 0;
     this.slowStackPer = 0;
     this.slowStackTimer = 0;
+    this.boostMultiplier = 1;
+    this.boostTimer = 0;
 
     this.path = path;
     const start = cellCenter(this.path[0].col, this.path[0].row);
@@ -678,6 +709,19 @@ class Enemy {
     return this.baseSpeed * clampedMultiplier;
   }
 
+  getGreenAuraMultiplier() {
+    if (this.type === 'dark') return Enemy.GREEN_AURA_MAX_MULT;
+    const minSpeed = Math.min(...Object.values(ENEMY_TYPES).map((cfg) => cfg.speed));
+    const maxSpeed = Math.max(...Object.values(ENEMY_TYPES).map((cfg) => cfg.speed));
+    const t = (this.baseSpeed - minSpeed) / Math.max(1, maxSpeed - minSpeed);
+    return Enemy.GREEN_AURA_MAX_MULT - t * (Enemy.GREEN_AURA_MAX_MULT - Enemy.GREEN_AURA_MIN_MULT);
+  }
+
+  applyGreenBoost(multiplier, duration) {
+    this.boostMultiplier = Math.max(this.boostMultiplier, multiplier);
+    this.boostTimer = Math.max(this.boostTimer, duration);
+  }
+
   takeDamage(amount) {
     if (!this.alive) return;
     this.hp -= amount;
@@ -723,6 +767,12 @@ class Enemy {
         this.slowStackPer = 0;
       }
     }
+    if (this.boostTimer > 0) {
+      this.boostTimer = Math.max(0, this.boostTimer - dt);
+      if (this.boostTimer <= 0) {
+        this.boostMultiplier = 1;
+      }
+    }
 
     if (this.healFlashTimer > 0) {
       this.healFlashTimer = Math.max(0, this.healFlashTimer - dt);
@@ -761,7 +811,7 @@ class Enemy {
 
     const stackSlowMultiplier = Math.max(0.3, 1 - this.slowStackCount * this.slowStackPer);
     const effectiveSlowMultiplier = Math.min(this.slowMultiplier, stackSlowMultiplier);
-    const advance = (this.speed * effectiveSlowMultiplier * dt) / segmentLength;
+    const advance = (this.speed * effectiveSlowMultiplier * this.boostMultiplier * dt) / segmentLength;
 
     this.progress += advance;
 
@@ -806,6 +856,15 @@ class Enemy {
         }
       }
     }
+    if (this.type === 'green' && this.alive) {
+      for (const other of this.game.enemies) {
+        if (!other.alive) continue;
+        const dist = Math.hypot(other.x - this.x, other.y - this.y);
+        if (dist <= Enemy.GREEN_AURA_RADIUS) {
+          other.applyGreenBoost(other.getGreenAuraMultiplier(), Enemy.GREEN_AURA_DURATION);
+        }
+      }
+    }
   }
 
   draw(ctx, images) {
@@ -815,12 +874,13 @@ class Enemy {
     const w = img.width * ASSET_SCALE;
     const h = img.height * ASSET_SCALE;
 
-    if (this.alive && this.type === 'sand') {
+    if (this.alive && (this.type === 'sand' || this.type === 'green')) {
+      const isGreenAura = this.type === 'green';
       ctx.beginPath();
-      ctx.arc(this.x, this.y, Enemy.HEAL_RADIUS, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(46, 204, 113, 0.08)';
+      ctx.arc(this.x, this.y, isGreenAura ? Enemy.GREEN_AURA_RADIUS : Enemy.HEAL_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = isGreenAura ? 'rgba(248, 210, 40, 0.10)' : 'rgba(46, 204, 113, 0.08)';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(46, 204, 113, 0.65)';
+      ctx.strokeStyle = isGreenAura ? 'rgba(248, 210, 40, 0.85)' : 'rgba(46, 204, 113, 0.65)';
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
       ctx.stroke();
@@ -847,7 +907,7 @@ class Enemy {
       const barY = this.y - h / 2 - 8;
       ctx.fillStyle = '#333';
       ctx.fillRect(barX, barY, barW, barH);
-      const barColors = { blue: '#3498db', dark: '#8e44ad', sand: '#f39c12' };
+      const barColors = { blue: '#3498db', dark: '#8e44ad', sand: '#f39c12', green: '#f1c40f' };
       ctx.fillStyle = this.healFlashTimer > 0 ? '#2ecc71' : (barColors[this.type] || '#e74c3c');
       ctx.fillRect(barX, barY, barW * (this.hp / this.maxHp), barH);
     }
@@ -931,9 +991,8 @@ class Projectile {
     if (this.hit) return;
 
     const img = images[this.bulletKey];
-    const isDart = this.bulletKey.startsWith('specialBarrel');
-    const isBarrel = this.bulletKey === 'barrelBlack_side';
-    const scale = isDart ? 1.6 : isBarrel ? 1.2 : this.bulletKey === 'bulletGreen3_outline' ? 2.2 : 2;
+    const isBarrel = this.bulletKey.startsWith('barrel');
+    const scale = isBarrel ? 1.2 : (this.bulletKey.includes('3_outline') ? 2.2 : 2);
     const w = img.width * ASSET_SCALE * scale;
     const h = img.height * ASSET_SCALE * scale;
 
@@ -948,6 +1007,9 @@ class Tower {
   static BARREL_MINE_CELL_OFFSET = TILE_SIZE * 0.28;
   static CANNON_BERSERK_CYCLE_COOLDOWN = 7;
   static CANNON_BERSERK_BASE_DURATION = 7;
+  static BARREL_SNIPER_FIXED_BONUS = { 1: 1300, 2: 2200, 3: 3400, 4: 5000, 5: 7200 };
+  static BARREL_SNIPER_BOSS_HP_PERCENT = { 1: 0.07, 2: 0.1, 3: 0.13, 4: 0.165, 5: 0.2 };
+  static BARREL_SNIPER_BOSS_HP_PERCENT_CAP = 0.2;
 
   constructor(col, row, game, type = 'cannon') {
     this.col = col;
@@ -1066,6 +1128,16 @@ class Tower {
       return this.config.berserk.projectiles[this.berserkLevel];
     }
     return this.config.projectiles[this.level];
+  }
+
+  getBarrelSpriteKey() {
+    if (this.isBerserkActive && this.config.berserk?.barrels && this.berserkLevel > 0) {
+      return this.config.berserk.barrels[this.berserkLevel] || this.config.berserk.barrels[1];
+    }
+    if (this.config.barrels) {
+      return this.config.barrels[this.level] || this.config.barrels[1];
+    }
+    return null;
   }
 
   getShotEffects() {
@@ -1272,9 +1344,14 @@ class Tower {
         this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
         const lvl = this.barrelBerserkLevels.sniper || 1;
         const splash = lvl >= 4 ? 34 : 0;
-        const hpScalePercent = 0.03 + lvl * 0.01;
-        const hpScaleDamage = Math.min(9500, Math.round(target.maxHp * hpScalePercent));
-        const totalDamage = this.getDamage() + hpScaleDamage;
+        const fixedBonus = Tower.BARREL_SNIPER_FIXED_BONUS[lvl] ?? Tower.BARREL_SNIPER_FIXED_BONUS[1];
+        const bossHpPercent = Math.min(
+          Tower.BARREL_SNIPER_BOSS_HP_PERCENT_CAP,
+          Tower.BARREL_SNIPER_BOSS_HP_PERCENT[lvl] ?? Tower.BARREL_SNIPER_BOSS_HP_PERCENT[1]
+        );
+        const bossHp = this.game.getBossReferenceMaxHp?.() ?? target.maxHp;
+        const hpScaleDamage = Math.round(bossHp * bossHpPercent);
+        const totalDamage = this.getDamage() + fixedBonus + hpScaleDamage;
         this.game.projectiles.push(
           new Projectile(
             this.x,
@@ -1323,6 +1400,7 @@ class Tower {
             this.getDamage(),
             this.getSplashRadius(),
             this,
+            this.getProjectileKey(),
             point.col,
             point.row
           )
@@ -1336,6 +1414,7 @@ class Tower {
               Math.round(this.getDamage() * 0.8),
               this.getSplashRadius(),
               this,
+              this.getProjectileKey(),
               point.col,
               point.row
             )
@@ -1479,11 +1558,18 @@ class Tower {
 
   draw(ctx, images) {
     const spriteKey = this.getBodySpriteKey();
-    const img = images[spriteKey];
+    const baseImg = images[spriteKey];
+    const barrelKey = this.getBarrelSpriteKey();
+    const barrelImg = barrelKey ? images[barrelKey] : null;
     const isDartType = this.type === 'dart';
-    const w = img.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
-    const h = img.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
-    drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
+    const w = baseImg.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
+    const h = baseImg.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
+    drawRotatedSprite(ctx, baseImg, this.x, this.y, w, h, this.angle);
+    if (barrelImg) {
+      const bw = barrelImg.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
+      const bh = barrelImg.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
+      drawRotatedSprite(ctx, barrelImg, this.x, this.y, bw, bh, this.angle);
+    }
     this.drawHudBars(ctx);
   }
 
@@ -1532,6 +1618,7 @@ class Game {
     this.spawnInterval = 2.5;
     this.bluePackChance = 0;
     this.sandChance = 0;
+    this.greenChance = 0;
     this.waveActive = false;
     this.bossSpawnSchedule = [];
     this.gameOver = false;
@@ -1660,6 +1747,15 @@ class Game {
 
   getEnemyDifficultyMultiplier() {
     return 1 + this.getProgressPower() * 0.035;
+  }
+
+  getBossReferenceMaxHp() {
+    const aliveBosses = this.enemies.filter((enemy) => enemy.alive && enemy.type === 'dark');
+    if (aliveBosses.length > 0) {
+      return Math.max(...aliveBosses.map((enemy) => enemy.maxHp));
+    }
+    const baseBossHp = getEnemyBaseHp('dark', this.wave);
+    return Math.round(baseBossHp * this.getEnemyDifficultyMultiplier());
   }
 
   getEnemySpeedMultiplier() {
@@ -2274,9 +2370,10 @@ class Game {
     const difficultyPower = this.getProgressPower();
     const enemiesPerWave = Math.round((6 + this.wave * 3) * (1 + difficultyPower * 0.01));
     const spawnInterval = Math.max(0.55, (2.4 - this.wave * 0.18) / (1 + difficultyPower * 0.012));
-    const bluePackChance = Math.min(0.55, 0.12 + this.wave * 0.05);
-    const sandChance = this.wave >= 3 ? Math.min(0.2, 0.04 + this.wave * 0.02) : 0;
-    return { enemiesPerWave, spawnInterval, bluePackChance, sandChance };
+    const bluePackChance = Math.min(0.48, 0.1 + this.wave * 0.045);
+    const sandChance = this.wave >= 3 ? Math.min(0.16, 0.03 + this.wave * 0.016) : 0;
+    const greenChance = this.wave >= 5 ? Math.min(0.13, 0.01 + this.wave * 0.012) : 0;
+    return { enemiesPerWave, spawnInterval, bluePackChance, sandChance, greenChance };
   }
 
   generatePathSpawnPlan(totalEnemies) {
@@ -2397,6 +2494,7 @@ class Game {
     this.spawnInterval = config.spawnInterval;
     this.bluePackChance = config.bluePackChance;
     this.sandChance = config.sandChance;
+    this.greenChance = config.greenChance;
     this.waveActive = true;
     this.enemiesSpawned = 0;
     this.spawnTimer = 0;
@@ -2443,6 +2541,14 @@ class Game {
     this.enemiesSpawned += count;
   }
 
+  spawnGreenEnemy() {
+    const pathIndex = this.takePathForSpawn(1);
+    const path = PATHS[pathIndex];
+    this.enemies.push(new Enemy(this, 'green', path, 0, this.wave));
+    this.pathFirstSpawned[pathIndex] = true;
+    this.enemiesSpawned++;
+  }
+
   spawnBoss(pathIndex = Math.floor(Math.random() * PATHS.length)) {
     const path = PATHS[pathIndex];
     this.enemies.push(new Enemy(this, 'dark', path, 0, this.wave));
@@ -2469,9 +2575,11 @@ class Game {
 
   spawnEnemy() {
     const roll = Math.random();
-    if (this.wave >= 3 && roll < this.sandChance) {
+    if (this.wave >= 4 && roll < this.greenChance) {
+      this.spawnGreenEnemy();
+    } else if (this.wave >= 3 && roll < this.greenChance + this.sandChance) {
       this.spawnSandEnemy();
-    } else if (roll < this.sandChance + this.bluePackChance) {
+    } else if (roll < this.greenChance + this.sandChance + this.bluePackChance) {
       this.spawnBluePack();
     } else {
       this.spawnRedEnemy();
@@ -2919,14 +3027,14 @@ class Game {
             const w = isRoad(col - 1, row);
             const e = isRoad(col + 1, row);
             const roadNeighborCount = (n ? 1 : 0) + (s ? 1 : 0) + (w ? 1 : 0) + (e ? 1 : 0);
-            if ((n || s) && !(e || w)) key = 'tileGrass_roadNorth';
-            else if ((e || w) && !(n || s)) key = 'tileGrass_roadEast';
-            else if (roadNeighborCount >= 3) key = 'tileGrass_roadCrossing';
-            else if (n && e) key = 'tileGrass_roadCornerUR';
-            else if (n && w) key = 'tileGrass_roadCornerUL';
-            else if (s && e) key = 'tileGrass_roadCornerLR';
-            else if (s && w) key = 'tileGrass_roadCornerLL';
-            else key = 'tileGrass_roadEast';
+            if ((n || s) && !(e || w)) key = 'tileSand_roadNorth';
+            else if ((e || w) && !(n || s)) key = 'tileSand_roadEast';
+            else if (roadNeighborCount >= 3) key = 'tileSand_roadCrossing';
+            else if (n && e) key = 'tileSand_roadCornerUR';
+            else if (n && w) key = 'tileSand_roadCornerUL';
+            else if (s && e) key = 'tileSand_roadCornerLR';
+            else if (s && w) key = 'tileSand_roadCornerLL';
+            else key = 'tileSand_roadEast';
           }
         } else if (isBuildSlot(col, row)) {
           key = (col + row) % 2 === 0 ? 'tileSand1' : 'tileSand2';

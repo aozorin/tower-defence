@@ -143,6 +143,41 @@ body {
   border: 3px solid #000;
 }
 
+.monolith-panel {
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+.monolith-panel::before,
+.monolith-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+
+.monolith-panel::before {
+  background-image:
+    url('assets/PNG/Retina/oilSpill_large.png'),
+    url('assets/PNG/Retina/crateMetal.png'),
+    url('assets/PNG/Retina/wireCrooked.png');
+  background-size: 86px 86px, 62px 62px, 56px 56px;
+  background-position: 8px 10px, calc(100% - 12px) 14px, 50% calc(100% - 8px);
+  opacity: 0.42;
+}
+
+.monolith-panel::after {
+  background-image:
+    url('assets/PNG/Retina/crateWood.png'),
+    url('assets/PNG/Retina/barricadeWood.png'),
+    url('assets/PNG/Retina/treeBrown_small.png');
+  background-size: 56px 56px, 62px 62px, 58px 58px;
+  background-position: 14px calc(100% - 10px), calc(100% - 10px) calc(100% - 14px), 50% 8px;
+  opacity: 0.36;
+}
+
 .menu-panel-fullscreen {
   width: 100vw;
   height: 100vh;
