@@ -227,6 +227,11 @@ body {
   color: #000;
 }
 
+.confirm-pending {
+  color: #0e3f12 !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
 .start-wave-control {
   display: flex;
   justify-content: center;

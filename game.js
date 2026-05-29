@@ -742,6 +742,7 @@ class Enemy {
     this.alive = false;
     this.game.spawnExplosion(this.x, this.y);
     this.game.gold += this.goldReward;
+    this.game.registerKill(this);
     this.game.updateHud();
   }
 
@@ -1001,6 +1002,7 @@ class Projectile {
 }
 
 class Tower {
+  static NEXT_ID = 1;
   static DAMAGE_MULTIPLIER = 1.1;
   static RANGE_UPGRADE_COSTS = [80, 160, 320];
   static MAX_BARREL_MINES = 30;
@@ -1012,6 +1014,7 @@ class Tower {
   static BARREL_SNIPER_BOSS_HP_PERCENT_CAP = 0.2;
 
   constructor(col, row, game, type = 'cannon') {
+    this.id = Tower.NEXT_ID++;
     this.col = col;
     this.row = row;
     this.game = game;
@@ -1033,6 +1036,7 @@ class Tower {
     this.isBerserkActive = false;
     this.barrelBerserkMode = null;
     this.barrelBerserkLevels = { sniper: 0, deployer: 0, booster: 0 };
+    this.spentGold = 0;
   }
 
   getRange() {
@@ -1608,6 +1612,9 @@ class Game {
     this.gameSpeed = 1;
     this.runRewarded = false;
     this.runStartWave = this.progress.selectedStartWave;
+    this.runKills = 0;
+    this.runWaveClears = 0;
+    this.runTokenReward = 0;
     this.gold = this.getStartingGold();
     this.lives = this.getStartingLives();
     this.wave = 1;
@@ -1653,6 +1660,8 @@ class Game {
     this.startWaveLabelEl = document.getElementById('start-wave-label');
     this.runRewardEl = document.getElementById('run-reward');
     this.activeShopTab = 'core';
+    this.pendingSellTowerId = null;
+    this.pendingResetProgress = false;
 
     this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
     this.canvas.addEventListener('contextmenu', (e) => {
@@ -1670,6 +1679,8 @@ class Game {
     document.getElementById('resume-btn').addEventListener('click', () => this.togglePause(false));
     document.getElementById('restart-btn').addEventListener('click', () => this.restart());
     document.getElementById('restart-from-pause-btn').addEventListener('click', () => this.restart());
+    this.resetProgressBtn = document.getElementById('reset-progress-btn');
+    this.resetProgressBtn.addEventListener('click', () => this.handleResetProgressClick());
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.started && !this.gameOver) this.togglePause();
     });
@@ -1864,6 +1875,11 @@ class Game {
   openShopMenu() {
     this.mainMenu.classList.add('hidden');
     this.shopMenu.classList.remove('hidden');
+    if (this.pendingResetProgress) {
+      this.pendingResetProgress = false;
+      this.resetProgressBtn.textContent = 'Сбросить прогресс';
+      this.resetProgressBtn.classList.remove('confirm-pending');
+    }
   }
 
   changeStartWave(delta) {
@@ -2639,6 +2655,50 @@ class Game {
   closeRadialMenu() {
     this.currentRadial = null;
     this.radialMenu.classList.add('hidden');
+    this.pendingSellTowerId = null;
+  }
+
+  registerKill(enemy) {
+    if (!enemy) return;
+    this.runKills++;
+  }
+
+  calculateTokenReward() {
+    const wavesPlayed = Math.max(0, this.highestWaveThisRun - this.runStartWave + 1);
+    const baseWaveReward = this.runWaveClears * 9;
+    const waveDepthBonus = Math.round(Math.max(0, wavesPlayed - 1) * 2.5);
+    const killReward = this.runKills;
+    const milestoneBonus = Math.round(Math.max(0, this.highestWaveThisRun - this.progress.bestWave) * 12);
+    const activityFloor = this.runKills > 0 || this.runWaveClears > 0 ? 6 : 0;
+    return Math.max(0, activityFloor + baseWaveReward + waveDepthBonus + killReward + milestoneBonus);
+  }
+
+  getTowerSellRefund(tower) {
+    return Math.max(1, Math.round(tower.spentGold * 0.5));
+  }
+
+  sellTower(tower) {
+    const idx = this.towers.indexOf(tower);
+    if (idx < 0) return;
+    const refund = this.getTowerSellRefund(tower);
+    this.towers.splice(idx, 1);
+    this.gold += refund;
+    this.pendingSellTowerId = null;
+    this.deselectTower();
+    this.closeRadialMenu();
+    this.updateHud();
+  }
+
+  handleResetProgressClick() {
+    if (!this.pendingResetProgress) {
+      this.pendingResetProgress = true;
+      this.resetProgressBtn.textContent = 'Сбросить прогресс ✓';
+      this.resetProgressBtn.classList.add('confirm-pending');
+      return;
+    }
+    localStorage.removeItem(PROGRESSION_STORAGE_KEY);
+    this.pendingResetProgress = false;
+    window.location.reload();
   }
 
   renderRadialMenu() {
@@ -2666,12 +2726,19 @@ class Game {
       let dx = 0;
       let dy = -30;
       if (layout === 'upgrade') {
-        const cols = Math.min(3, Math.max(1, options.length));
-        const row = Math.floor(idx / cols);
-        const col = idx % cols;
-        const xStart = -((cols - 1) * 68) / 2;
-        dx = xStart + col * 68;
-        dy = -26 + row * 60;
+        if (option.position === 'below') {
+          dx = 0;
+          dy = 54;
+        } else {
+          const topOptions = options.filter((entry) => entry.position !== 'below');
+          const topIndex = topOptions.indexOf(option);
+          const cols = Math.min(3, Math.max(1, topOptions.length));
+          const row = Math.floor(topIndex / cols);
+          const col = topIndex % cols;
+          const xStart = -((cols - 1) * 68) / 2;
+          dx = xStart + col * 68;
+          dy = -26 + row * 60;
+        }
       } else {
         const gap = 74;
         const total = options.length;
@@ -2679,15 +2746,15 @@ class Game {
         dx = start + idx * gap;
       }
       btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%)`;
-      btn.innerHTML = `<img src="${option.icon}" alt=""><span class="cost">${cost}</span>`;
+      btn.innerHTML = `<img src="${option.icon}" alt=""><span class="cost">${option.costPrefix || ''}${cost}${option.costSuffix || ''}</span>`;
       btn.addEventListener('click', () => {
         const currentCost = typeof option.getCost === 'function' ? option.getCost() : option.cost;
-        if (currentCost == null) {
+        if (currentCost == null && !option.allowNullCost) {
           this.showHint('Максимальная прокачка');
           this.closeRadialMenu();
           return;
         }
-        if (this.gold < currentCost) {
+        if (!option.skipAffordabilityCheck && this.gold < currentCost) {
           this.showHint('Нужно больше золота');
           return;
         }
@@ -2715,7 +2782,9 @@ class Game {
     }
 
     this.gold -= buyCost;
-    this.towers.push(new Tower(col, row, this, towerType));
+    const tower = new Tower(col, row, this, towerType);
+    tower.spentGold = buyCost;
+    this.towers.push(tower);
     this.updateHud();
     this.closeRadialMenu();
   }
@@ -2727,6 +2796,7 @@ class Game {
     if (this.gold < cost) return;
     this.gold -= cost;
     tower.upgrade();
+    tower.spentGold += cost;
     this.updateHud();
     this.renderRadialMenu();
   }
@@ -2738,6 +2808,7 @@ class Game {
     if (this.gold < cost) return;
     this.gold -= cost;
     tower.upgradeRange();
+    tower.spentGold += cost;
     this.updateHud();
     this.renderRadialMenu();
   }
@@ -2756,6 +2827,7 @@ class Game {
     if (this.gold < cost) return;
     this.gold -= cost;
     tower.upgradeBerserk();
+    tower.spentGold += cost;
     this.updateHud();
     this.renderRadialMenu();
   }
@@ -2765,6 +2837,7 @@ class Game {
     if (cost == null || this.gold < cost) return;
     this.gold -= cost;
     tower.upgradeBarrelBerserk(mode);
+    tower.spentGold += cost;
     this.updateHud();
     this.renderRadialMenu();
   }
@@ -2830,6 +2903,24 @@ class Game {
         });
       }
     }
+    const sellConfirm = this.pendingSellTowerId === tower.id;
+    options.push({
+      getCost: () => this.getTowerSellRefund(tower),
+      costPrefix: '+',
+      icon: sellConfirm
+        ? 'assets/kenney_game-icons/PNG/White/2x/checkmark.png'
+        : 'assets/kenney_game-icons/PNG/White/2x/trashcan.png',
+      skipAffordabilityCheck: true,
+      position: 'below',
+      action: () => {
+        if (this.pendingSellTowerId !== tower.id) {
+          this.pendingSellTowerId = tower.id;
+          this.renderRadialMenu();
+          return;
+        }
+        this.sellTower(tower);
+      },
+    });
     if (options.length === 0) {
       this.showHint('Максимальная прокачка');
       this.closeRadialMenu();
@@ -2894,18 +2985,22 @@ class Game {
   finishRun() {
     if (this.runRewarded) return;
     this.runRewarded = true;
-    const wavesPlayed = Math.max(1, this.highestWaveThisRun - this.runStartWave + 1);
-    const bestBonus = Math.max(0, this.highestWaveThisRun - this.progress.bestWave) * 18;
-    const reward = Math.round(12 + wavesPlayed * 10 + Math.min(80, this.highestWaveThisRun * 2) + bestBonus);
+    const reward = this.calculateTokenReward();
+    this.runTokenReward = reward;
     this.progress.tokens += reward;
     this.progress.runs++;
     this.progress.bestWave = Math.max(this.progress.bestWave, this.highestWaveThisRun);
     this.saveProgress();
-    this.runRewardEl.textContent = `Жетоны: +${reward}`;
+    this.runRewardEl.textContent = `Жетоны: +${reward} (убийства: ${this.runKills}, волны: ${this.runWaveClears})`;
     this.updateProgressUi();
   }
 
   startGame() {
+    if (this.pendingResetProgress) {
+      this.pendingResetProgress = false;
+      this.resetProgressBtn.textContent = 'Сбросить прогресс';
+      this.resetProgressBtn.classList.remove('confirm-pending');
+    }
     this.progress.selectedStartWave = Math.min(
       this.progress.selectedStartWave,
       getMaxStartWave(this.progress)
@@ -2916,6 +3011,9 @@ class Game {
     this.gold = this.getStartingGold();
     this.lives = this.getStartingLives();
     this.runRewarded = false;
+    this.runKills = 0;
+    this.runWaveClears = 0;
+    this.runTokenReward = 0;
     this.updateHud();
     this.started = true;
     this.mainMenu.classList.add('hidden');
@@ -2976,6 +3074,7 @@ class Game {
 
     if (waveCleared && this.waveActive) {
       this.waveActive = false;
+      this.runWaveClears++;
       if (this.lives > 0) {
         this.wave++;
         this.updateHud();
