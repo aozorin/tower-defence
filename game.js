@@ -211,6 +211,7 @@ const PROGRESSION_DEFAULTS = {
   speedPinned: false,
   speedPinnedValue: 1,
   lifeBountyLevel: 0,
+  killBountyLevel: 0,
   cannonTree: {
     cooldownLevel: 0,
     damageLevel: 0,
@@ -261,6 +262,7 @@ const META_BERSERK_COSTS = [180, 320, 520, 820, 1200];
 const SPEED_LEVEL_COSTS = [120, 220, 360, 560, 840];
 const START_WAVE_COSTS = [120, 220, 380, 650, 1100];
 const LIFE_BOUNTY_COSTS = [160, 280, 420, 680, 980];
+const KILL_BOUNTY_COSTS = [180, 300, 480, 760, 1120];
 const TANK_TREE_COSTS = {
   cooldown: [120, 220, 340, 500, 720],
   damage: [130, 240, 370, 540, 780],
@@ -613,6 +615,7 @@ function getSandBaseHp(wave) {
 }
 
 class Enemy {
+  static NEXT_ID = 1;
   static HEAL_RADIUS = 170;
   static HEAL_AMOUNT = 8;
   static HEAL_FLASH_DURATION = 1.1;
@@ -628,6 +631,7 @@ class Enemy {
   static GREEN_AURA_MAX_MULT = 1.72;
 
   constructor(game, type = 'red', path = PATHS[0], pathOffset = 0, wave = 1) {
+    this.id = Enemy.NEXT_ID++;
     const cfg = ENEMY_TYPES[type];
     this.game = game;
     this.type = type;
@@ -746,8 +750,10 @@ class Enemy {
     if (!this.alive) return;
     this.alive = false;
     this.game.spawnExplosion(this.x, this.y);
-    this.game.gold += this.goldReward;
-    this.game.addRunGoldEarned(this.goldReward);
+    const killBountyBonus = this.game.getKillBountyBonus?.() ?? 0;
+    const totalReward = this.goldReward + killBountyBonus;
+    this.game.gold += totalReward;
+    this.game.addRunGoldEarned(totalReward);
     this.game.registerKill(this);
     this.game.updateHud();
   }
@@ -941,6 +947,10 @@ class Projectile {
     this.splashRadius = splashRadius;
     this.flightAngle = 0;
     this.effects = effects || {};
+    this.ricochetLeft = this.effects.ricochetCount || 0;
+    this.ricochetDamageMult = this.effects.ricochetDamageMult || 1;
+    this.ricochetRange = this.effects.ricochetRange || 220;
+    this.hitEnemyIds = new Set();
   }
 
   applyEffects(enemy) {
@@ -975,6 +985,7 @@ class Projectile {
     const dist = Math.hypot(dx, dy);
 
     if (dist < Projectile.HIT_RADIUS) {
+      if (this.target?.id != null) this.hitEnemyIds.add(this.target.id);
       if (this.splashRadius > 0) {
         this.game.spawnBarrelExplosion(this.x, this.y);
         for (const enemy of this.game.enemies) {
@@ -988,6 +999,15 @@ class Projectile {
       } else {
         this.target.takeDamage(this.damage);
         this.applyEffects(this.target);
+        if (this.ricochetLeft > 0) {
+          const nextTarget = this.findRicochetTarget(this.target);
+          if (nextTarget) {
+            this.target = nextTarget;
+            this.damage = Math.max(1, Math.round(this.damage * this.ricochetDamageMult));
+            this.ricochetLeft--;
+            return;
+          }
+        }
       }
       this.hit = true;
       return;
@@ -1009,6 +1029,22 @@ class Projectile {
     const h = img.height * ASSET_SCALE * scale;
 
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.flightAngle || 0);
+  }
+
+  findRicochetTarget(fromTarget) {
+    let best = null;
+    let bestDist = this.ricochetRange;
+    for (const enemy of this.game.enemies) {
+      if (!enemy.alive) continue;
+      if (enemy === fromTarget) continue;
+      if (enemy.id != null && this.hitEnemyIds.has(enemy.id)) continue;
+      const d = Math.hypot(enemy.x - fromTarget.x, enemy.y - fromTarget.y);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = enemy;
+      }
+    }
+    return best;
   }
 }
 
@@ -1118,10 +1154,7 @@ class Tower {
   }
 
   getSplashRadius() {
-    if (this.type === 'cannon' && this.level >= 3 && this.game.hasProgressEffect?.('cannonImpact')) {
-      if (this.game.hasProgressEffect?.('cannonSiege')) return 58;
-      return this.game.hasProgressEffect?.('cannonPierce') ? 48 : 34;
-    }
+    if (this.type === 'cannon') return 0;
     if (this.config.splashRadius) {
       let radius = this.config.splashRadius;
       if (typeof radius === 'object') {
@@ -1157,6 +1190,14 @@ class Tower {
 
   getShotEffects() {
     const effects = {};
+    if (this.type === 'cannon') {
+      const utilityLevel = this.game.progress.cannonTree.utilityLevel || 0;
+      if (utilityLevel > 0) {
+        effects.ricochetCount = Math.min(5, utilityLevel);
+        effects.ricochetDamageMult = Math.min(0.95, 0.6 + utilityLevel * 0.08);
+        effects.ricochetRange = 170 + utilityLevel * 20;
+      }
+    }
     if (this.type === 'dart' && (this.game.progress.dartTree.burnLevel || 0) > 0) {
       const burnLevel = this.game.progress.dartTree.burnLevel || 0;
       effects.poisonDps = Math.round(this.getDamage() * (0.14 + burnLevel * 0.06));
@@ -1167,10 +1208,6 @@ class Tower {
       effects.slowStackPer = Math.min(0.1, 0.03 + slowLevel * 0.014);
       effects.slowStackDuration = 1.2 + slowLevel * 0.24;
       effects.slowStackMax = 5;
-    }
-    if (this.type === 'cannon' && this.game.hasProgressEffect?.('cannonBurn')) {
-      effects.poisonDps = Math.round(this.getDamage() * 0.22);
-      effects.poisonDuration = 2.4;
     }
     if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelNapalm')) {
       effects.poisonDps = Math.round(this.getDamage() * 0.4);
@@ -1753,6 +1790,12 @@ class Game {
     return Math.round((24 + this.wave * 8) * (1 + lvl * 0.75));
   }
 
+  getKillBountyBonus() {
+    const lvl = this.progress.killBountyLevel || 0;
+    if (lvl <= 0) return 0;
+    return Math.round(2 + lvl * 2 + this.wave * (0.4 + lvl * 0.12));
+  }
+
   getStartingGold() {
     const waveOffset = Math.max(0, this.progress.selectedStartWave - 1);
     const waveBonusGold = Math.round(waveOffset * 28 + waveOffset * waveOffset * 0.6);
@@ -1765,9 +1808,6 @@ class Game {
 
   getTowerDamageMultiplier(type) {
     let multiplier = 0.72 + this.progress.stats.damage * 0.08;
-    if (type === 'cannon' && this.hasProgressEffect('cannonImpact')) multiplier += 0.08;
-    if (type === 'cannon' && this.hasProgressEffect('cannonPierce')) multiplier += 0.1;
-    if (type === 'cannon' && this.hasProgressEffect('cannonOverload')) multiplier += 0.1;
     if (type === 'dart' && this.hasProgressEffect('dartOvercharge')) multiplier += 0.08;
     if (type === 'barrel' && this.hasProgressEffect('barrelStockpile')) multiplier += 0.05;
     if (type === 'cannon') multiplier += (this.progress.cannonTree.damageLevel || 0) * 0.08;
@@ -2095,6 +2135,18 @@ class Game {
           'Кэшбэк'
         );
       }
+      for (let lvl = 1; lvl <= KILL_BOUNTY_COSTS.length; lvl++) {
+        add(
+          `meta-kill-bounty-${lvl}`,
+          `Bounty убийств ${lvl}/${KILL_BOUNTY_COSTS.length}`,
+          `+золото за убийство: уровень ${lvl}`,
+          KILL_BOUNTY_COSTS[lvl - 1],
+          (this.progress.killBountyLevel || 0) >= lvl,
+          () => { this.progress.killBountyLevel = lvl; },
+          (this.progress.killBountyLevel || 0) < lvl - 1,
+          'Bounty'
+        );
+      }
       return items;
     }
 
@@ -2150,11 +2202,11 @@ class Game {
         );
       }
       const utilityDetails = [
-        'Удар ядра: сплэш 34',
-        'Тяжелое ядро: сплэш 48, +10% урон',
-        'Горящее ядро: 2.4 сек, 22% урона/сек',
-        'Осадное ядро: сплэш 58',
-        'Перегруз: ещё +10% урон',
+        'Рикошет I: +1 цель, 68% урона',
+        'Рикошет II: +2 цели, 76% урона',
+        'Рикошет III: +3 цели, 84% урона',
+        'Рикошет IV: +4 цели, 92% урона',
+        'Рикошет V: +5 целей, 95% урона',
       ];
       for (let lvl = 1; lvl <= 5; lvl++) {
         add(
