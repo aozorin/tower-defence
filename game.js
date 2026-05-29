@@ -948,6 +948,8 @@ class Enemy {
       ctx.setLineDash([]);
     }
 
+    drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
+
     if (this.alive && this.healFlashTimer > 0) {
       const alpha = this.healFlashTimer / Enemy.HEAL_FLASH_DURATION;
       ctx.beginPath();
@@ -995,8 +997,6 @@ class Enemy {
       ctx.drawImage(images.barricadeMetal, this.x - mw / 2, this.y - mh / 2, mw, mh);
       ctx.restore();
     }
-
-    drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
 
     if (this.alive && this.hp < this.maxHp) {
       const barW = TILE_SIZE * 0.6;
