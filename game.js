@@ -203,11 +203,26 @@ const PROGRESSION_DEFAULTS = {
   metaBerserkLevel: 0,
   speedLevel: 0,
   startWaveLevel: 0,
+  cannonTree: {
+    cooldownLevel: 0,
+    damageLevel: 0,
+    rangeLevel: 0,
+    discountLevel: 0,
+    utilityLevel: 0,
+  },
+  dartTree: {
+    cooldownLevel: 0,
+    damageLevel: 0,
+    rangeLevel: 0,
+    discountLevel: 0,
+    utilityLevel: 0,
+  },
   barrelTree: {
     cooldownLevel: 0,
     damageLevel: 0,
     discountLevel: 0,
     utilityLevel: 0,
+    berserkChoice: null,
     berserkUnlock: { sniper: 0, deployer: 0, booster: 0 },
   },
 };
@@ -237,6 +252,20 @@ const EFFECT_COSTS = {
 const META_BERSERK_COSTS = [180, 320, 520, 820, 1200];
 const SPEED_LEVEL_COSTS = [120, 220, 360, 560, 840];
 const START_WAVE_COSTS = [120, 220, 380, 650, 1100];
+const TANK_TREE_COSTS = {
+  cooldown: [120, 220, 340, 500, 720],
+  damage: [130, 240, 370, 540, 780],
+  range: [110, 210, 320, 480, 700],
+  discount: [130, 240, 380, 560, 820],
+  utility: [220, 340, 520, 780, 1120],
+};
+const DART_TREE_COSTS = {
+  cooldown: [140, 250, 380, 560, 820],
+  damage: [140, 260, 400, 600, 880],
+  range: [120, 230, 350, 520, 760],
+  discount: [140, 260, 410, 620, 900],
+  utility: [220, 340, 520, 780, 1120],
+};
 const BARREL_TREE_COSTS = {
   cooldown: [140, 240, 360, 520, 760],
   damage: [150, 260, 390, 560, 820],
@@ -960,6 +989,14 @@ class Tower {
     if (this.type === 'dart' && this.game.hasProgressEffect?.('dartOvercharge')) {
       value *= 0.85;
     }
+    if (this.type === 'cannon') {
+      const cdLevel = this.game.progress.cannonTree.cooldownLevel || 0;
+      value *= Math.max(0.55, 1 - cdLevel * 0.08);
+    }
+    if (this.type === 'dart') {
+      const cdLevel = this.game.progress.dartTree.cooldownLevel || 0;
+      value *= Math.max(0.5, 1 - cdLevel * 0.07);
+    }
     if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelStockpile')) {
       value *= 0.9;
     }
@@ -979,6 +1016,7 @@ class Tower {
 
   getSplashRadius() {
     if (this.type === 'cannon' && this.level >= 3 && this.game.hasProgressEffect?.('cannonImpact')) {
+      if (this.game.hasProgressEffect?.('cannonSiege')) return 58;
       return this.game.hasProgressEffect?.('cannonPierce') ? 48 : 34;
     }
     if (this.config.splashRadius) {
@@ -1007,12 +1045,16 @@ class Tower {
   getShotEffects() {
     const effects = {};
     if (this.type === 'dart' && this.game.hasProgressEffect?.('dartPoison')) {
-      effects.poisonDps = Math.round(this.getDamage() * 0.25);
-      effects.poisonDuration = 2.5;
+      effects.poisonDps = Math.round(this.getDamage() * (this.game.hasProgressEffect?.('dartRupture') ? 0.36 : 0.25));
+      effects.poisonDuration = this.game.hasProgressEffect?.('dartRupture') ? 3.5 : 2.5;
     }
     if (this.type === 'dart' && this.game.hasProgressEffect?.('dartSlow')) {
-      effects.slowMultiplier = 0.68;
-      effects.slowDuration = 1.6;
+      effects.slowMultiplier = this.game.hasProgressEffect?.('dartPin') ? 0.56 : 0.68;
+      effects.slowDuration = this.game.hasProgressEffect?.('dartPin') ? 2.2 : 1.6;
+    }
+    if (this.type === 'cannon' && this.game.hasProgressEffect?.('cannonBurn')) {
+      effects.poisonDps = Math.round(this.getDamage() * 0.22);
+      effects.poisonDuration = 2.4;
     }
     if (this.type === 'barrel' && this.game.hasProgressEffect?.('barrelNapalm')) {
       effects.poisonDps = Math.round(this.getDamage() * 0.4);
@@ -1068,6 +1110,9 @@ class Tower {
 
   canUpgradeBarrelBerserk(mode) {
     if (this.type !== 'barrel' || this.level < 3) return false;
+    const chosenMode = this.game.progress.barrelTree.berserkChoice;
+    if (chosenMode && chosenMode !== mode) return false;
+    if (this.barrelBerserkMode && this.barrelBerserkMode !== mode) return false;
     const unlocked = this.game.progress.barrelTree.berserkUnlock[mode] || 0;
     return unlocked > 0 && this.barrelBerserkLevels[mode] < unlocked && this.barrelBerserkLevels[mode] < 5;
   }
@@ -1081,6 +1126,10 @@ class Tower {
 
   upgradeBarrelBerserk(mode) {
     if (!this.canUpgradeBarrelBerserk(mode)) return false;
+    if (!this.game.progress.barrelTree.berserkChoice) {
+      this.game.progress.barrelTree.berserkChoice = mode;
+      this.game.saveProgress?.();
+    }
     this.barrelBerserkMode = mode;
     this.barrelBerserkLevels[mode]++;
     return true;
@@ -1184,6 +1233,28 @@ class Tower {
     if (this.cooldown > 0) return;
 
     if (this.type === 'barrel') {
+      if (this.barrelBerserkMode === 'sniper') {
+        if (!target) return;
+        this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
+        const lvl = this.barrelBerserkLevels.sniper || 1;
+        const splash = lvl >= 4 ? 34 : 0;
+        this.game.projectiles.push(
+          new Projectile(
+            this.x,
+            this.y,
+            target,
+            this.getDamage(),
+            this.game,
+            lvl >= 3 ? 'shotRed' : 'shotOrange',
+            620 + lvl * 40,
+            splash,
+            this.getShotEffects()
+          )
+        );
+        this.cooldown = cooldown;
+        return;
+      }
+
       const activeMinesByThisTower = this.game.mines.filter(
         (mine) => !mine.spent && mine.ownerTower === this
       );
@@ -1525,17 +1596,22 @@ class Game {
 
   getTowerDamageMultiplier(type) {
     let multiplier = 0.72 + this.progress.stats.damage * 0.08;
-    if (type === 'cannon' && this.progress.effects.cannonImpact) multiplier += 0.08;
-    if (type === 'cannon' && this.progress.effects.cannonPierce) multiplier += 0.1;
-    if (type === 'dart' && this.progress.effects.dartOvercharge) multiplier += 0.08;
-    if (type === 'barrel' && this.progress.effects.barrelStockpile) multiplier += 0.05;
+    if (type === 'cannon' && this.hasProgressEffect('cannonImpact')) multiplier += 0.08;
+    if (type === 'cannon' && this.hasProgressEffect('cannonPierce')) multiplier += 0.1;
+    if (type === 'cannon' && this.hasProgressEffect('cannonOverload')) multiplier += 0.1;
+    if (type === 'dart' && this.hasProgressEffect('dartOvercharge')) multiplier += 0.08;
+    if (type === 'barrel' && this.hasProgressEffect('barrelStockpile')) multiplier += 0.05;
+    if (type === 'cannon') multiplier += (this.progress.cannonTree.damageLevel || 0) * 0.08;
+    if (type === 'dart') multiplier += (this.progress.dartTree.damageLevel || 0) * 0.08;
     if (type === 'barrel') multiplier += (this.progress.barrelTree.damageLevel || 0) * 0.08;
     return multiplier;
   }
 
   getTowerRangeMultiplier(type) {
     let multiplier = 0.9 + this.progress.stats.range * 0.06;
-    if (type === 'barrel' && this.progress.effects.barrelStockpile) multiplier += 0.05;
+    if (type === 'cannon') multiplier += (this.progress.cannonTree.rangeLevel || 0) * 0.06;
+    if (type === 'dart') multiplier += (this.progress.dartTree.rangeLevel || 0) * 0.06;
+    if (type === 'barrel' && this.hasProgressEffect('barrelStockpile')) multiplier += 0.05;
     return multiplier;
   }
 
@@ -1577,6 +1653,16 @@ class Game {
   }
 
   hasProgressEffect(effect) {
+    if (effect === 'cannonImpact') return this.progress.cannonTree.utilityLevel >= 1 || !!this.progress.effects.cannonImpact;
+    if (effect === 'cannonPierce') return this.progress.cannonTree.utilityLevel >= 2 || !!this.progress.effects.cannonPierce;
+    if (effect === 'cannonBurn') return this.progress.cannonTree.utilityLevel >= 3;
+    if (effect === 'cannonSiege') return this.progress.cannonTree.utilityLevel >= 4;
+    if (effect === 'cannonOverload') return this.progress.cannonTree.utilityLevel >= 5;
+    if (effect === 'dartOvercharge') return this.progress.dartTree.utilityLevel >= 1 || !!this.progress.effects.dartOvercharge;
+    if (effect === 'dartPoison') return this.progress.dartTree.utilityLevel >= 2 || !!this.progress.effects.dartPoison;
+    if (effect === 'dartSlow') return this.progress.dartTree.utilityLevel >= 3 || !!this.progress.effects.dartSlow;
+    if (effect === 'dartRupture') return this.progress.dartTree.utilityLevel >= 4;
+    if (effect === 'dartPin') return this.progress.dartTree.utilityLevel >= 5;
     if (effect === 'barrelStockpile') return this.progress.barrelTree.utilityLevel >= 1;
     if (effect === 'barrelNapalm') return this.progress.barrelTree.utilityLevel >= 2;
     if (effect === 'barrelSnare') return this.progress.barrelTree.utilityLevel >= 3;
@@ -1592,6 +1678,13 @@ class Game {
   getBarrelDiscountMultiplier() {
     const lvl = this.progress.barrelTree.discountLevel || 0;
     return Math.max(0.45, 1 - lvl * 0.08);
+  }
+
+  getTowerDiscountMultiplier(type) {
+    if (type === 'cannon') return Math.max(0.55, 1 - (this.progress.cannonTree.discountLevel || 0) * 0.08);
+    if (type === 'dart') return Math.max(0.55, 1 - (this.progress.dartTree.discountLevel || 0) * 0.08);
+    if (type === 'barrel') return this.getBarrelDiscountMultiplier();
+    return 1;
   }
 
   syncStartPreviewStats() {
@@ -1797,25 +1890,148 @@ class Game {
     }
 
     if (tab === 'cannon') {
-      add('effect-cannon', 'Удар ядра', 'Сплэш-урон', EFFECT_COSTS.cannonImpact,
-        this.progress.effects.cannonImpact, () => { this.progress.effects.cannonImpact = true; },
-        this.progress.towerMaxLevel.cannon < 3, 'Танк');
-      add('effect-cannon-pierce', 'Тяжелое ядро', 'радиус сплэша 34 -> 48, доп. +10% к урону', EFFECT_COSTS.cannonPierce,
-        this.progress.effects.cannonPierce, () => { this.progress.effects.cannonPierce = true; },
-        !this.progress.effects.cannonImpact, 'Танк');
+      const t = this.progress.cannonTree;
+      const unlocked = this.progress.unlockedTowers.cannon;
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `cannon-cd-${lvl}`,
+          `КД ${lvl}/5`,
+          `кд: -${(lvl - 1) * 8}% -> -${lvl * 8}%`,
+          TANK_TREE_COSTS.cooldown[lvl - 1],
+          t.cooldownLevel >= lvl,
+          () => { t.cooldownLevel = lvl; },
+          !unlocked || t.cooldownLevel < lvl - 1,
+          'КД'
+        );
+      }
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `cannon-dmg-${lvl}`,
+          `Урон ${lvl}/5`,
+          `урон: +${(lvl - 1) * 8}% -> +${lvl * 8}%`,
+          TANK_TREE_COSTS.damage[lvl - 1],
+          t.damageLevel >= lvl,
+          () => { t.damageLevel = lvl; },
+          !unlocked || t.damageLevel < lvl - 1,
+          'Урон'
+        );
+      }
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `cannon-range-${lvl}`,
+          `Дальность ${lvl}/5`,
+          `дальность: +${(lvl - 1) * 6}% -> +${lvl * 6}%`,
+          TANK_TREE_COSTS.range[lvl - 1],
+          t.rangeLevel >= lvl,
+          () => { t.rangeLevel = lvl; },
+          !unlocked || t.rangeLevel < lvl - 1,
+          'Дальность'
+        );
+      }
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `cannon-discount-${lvl}`,
+          `Скидка ${lvl}/5`,
+          `скидка: -${(lvl - 1) * 8}% -> -${lvl * 8}%`,
+          TANK_TREE_COSTS.discount[lvl - 1],
+          t.discountLevel >= lvl,
+          () => { t.discountLevel = lvl; },
+          !unlocked || t.discountLevel < lvl - 1,
+          'Скидка'
+        );
+      }
+      const utilityDetails = [
+        'Удар ядра: сплэш 34',
+        'Тяжелое ядро: сплэш 48, +10% урон',
+        'Горящее ядро: 2.4 сек, 22% урона/сек',
+        'Осадное ядро: сплэш 58',
+        'Перегруз: ещё +10% урон',
+      ];
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `cannon-utility-${lvl}`,
+          `Утилита ${lvl}/5`,
+          utilityDetails[lvl - 1],
+          TANK_TREE_COSTS.utility[lvl - 1],
+          t.utilityLevel >= lvl,
+          () => { t.utilityLevel = lvl; },
+          !unlocked || t.utilityLevel < lvl - 1 || (lvl === 1 && this.progress.towerMaxLevel.cannon < 3),
+          'Уникальная линия'
+        );
+      }
       return items;
     }
 
     if (tab === 'dart') {
-      add('effect-dart', 'Перегрев', 'КД -15%, доп. +8% к урону', EFFECT_COSTS.dartOvercharge,
-        this.progress.effects.dartOvercharge, () => { this.progress.effects.dartOvercharge = true; },
-        !this.progress.unlockedTowers.dart, 'Дротики');
-      add('effect-dart-poison', 'Ядовитые дротики', 'яд: 2.5 сек, 25% от выстрела в сек.', EFFECT_COSTS.dartPoison,
-        this.progress.effects.dartPoison, () => { this.progress.effects.dartPoison = true; },
-        !this.progress.effects.dartOvercharge, 'Дротики');
-      add('effect-dart-slow', 'Ледяные дротики', 'замедление до 68% скорости на 1.6 сек', EFFECT_COSTS.dartSlow,
-        this.progress.effects.dartSlow, () => { this.progress.effects.dartSlow = true; },
-        !this.progress.effects.dartPoison, 'Дротики');
+      const d = this.progress.dartTree;
+      const unlocked = this.progress.unlockedTowers.dart;
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `dart-cd-${lvl}`,
+          `КД ${lvl}/5`,
+          `кд: -${(lvl - 1) * 7}% -> -${lvl * 7}%`,
+          DART_TREE_COSTS.cooldown[lvl - 1],
+          d.cooldownLevel >= lvl,
+          () => { d.cooldownLevel = lvl; },
+          !unlocked || d.cooldownLevel < lvl - 1,
+          'КД'
+        );
+      }
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `dart-dmg-${lvl}`,
+          `Урон ${lvl}/5`,
+          `урон: +${(lvl - 1) * 8}% -> +${lvl * 8}%`,
+          DART_TREE_COSTS.damage[lvl - 1],
+          d.damageLevel >= lvl,
+          () => { d.damageLevel = lvl; },
+          !unlocked || d.damageLevel < lvl - 1,
+          'Урон'
+        );
+      }
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `dart-range-${lvl}`,
+          `Дальность ${lvl}/5`,
+          `дальность: +${(lvl - 1) * 6}% -> +${lvl * 6}%`,
+          DART_TREE_COSTS.range[lvl - 1],
+          d.rangeLevel >= lvl,
+          () => { d.rangeLevel = lvl; },
+          !unlocked || d.rangeLevel < lvl - 1,
+          'Дальность'
+        );
+      }
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `dart-discount-${lvl}`,
+          `Скидка ${lvl}/5`,
+          `скидка: -${(lvl - 1) * 8}% -> -${lvl * 8}%`,
+          DART_TREE_COSTS.discount[lvl - 1],
+          d.discountLevel >= lvl,
+          () => { d.discountLevel = lvl; },
+          !unlocked || d.discountLevel < lvl - 1,
+          'Скидка'
+        );
+      }
+      const utilityDetails = [
+        'Перегрев: КД -15%, +8% урон',
+        'Яд: 2.5 сек, 25% урона/сек',
+        'Лёд: 68% скорости на 1.6 сек',
+        'Разрыв: яд 3.5 сек, 36% урона/сек',
+        'Приковка: 56% скорости на 2.2 сек',
+      ];
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        add(
+          `dart-utility-${lvl}`,
+          `Утилита ${lvl}/5`,
+          utilityDetails[lvl - 1],
+          DART_TREE_COSTS.utility[lvl - 1],
+          d.utilityLevel >= lvl,
+          () => { d.utilityLevel = lvl; },
+          !unlocked || d.utilityLevel < lvl - 1,
+          'Уникальная линия'
+        );
+      }
       return items;
     }
 
@@ -1886,6 +2102,7 @@ class Game {
         { key: 'booster', title: 'Берсерк: Мехабустер', costs: BARREL_TREE_COSTS.berserkBooster },
       ];
       for (const branch of berserkBranches) {
+        if (b.berserkChoice && b.berserkChoice !== branch.key) continue;
         for (let lvl = 1; lvl <= 5; lvl++) {
           add(
             `barrel-berserk-${branch.key}-${lvl}`,
@@ -1893,7 +2110,10 @@ class Game {
             'Открывает уровень ветки для боевого апгрейда',
             branch.costs[lvl - 1],
             b.berserkUnlock[branch.key] >= lvl,
-            () => { b.berserkUnlock[branch.key] = lvl; },
+            () => {
+              if (!b.berserkChoice) b.berserkChoice = branch.key;
+              b.berserkUnlock[branch.key] = lvl;
+            },
             !unlocked || b.berserkUnlock[branch.key] < lvl - 1,
             branch.title
           );
@@ -2322,9 +2542,7 @@ class Game {
       return;
     }
 
-    const buyCost = towerType === 'barrel'
-      ? Math.round(cfg.cost * this.getBarrelDiscountMultiplier())
-      : cfg.cost;
+    const buyCost = Math.round(cfg.cost * this.getTowerDiscountMultiplier(towerType));
     if (this.gold < buyCost) {
       this.showHint('Недостаточно золота');
       return;
@@ -2339,9 +2557,7 @@ class Game {
   upgradeTower(tower) {
     if (!tower.canUpgrade()) return;
     const baseCost = tower.getUpgradeCost();
-    const cost = tower.type === 'barrel'
-      ? Math.round(baseCost * this.getBarrelDiscountMultiplier())
-      : baseCost;
+    const cost = Math.round(baseCost * this.getTowerDiscountMultiplier(tower.type));
     if (this.gold < cost) return;
     this.gold -= cost;
     tower.upgrade();
@@ -2384,7 +2600,7 @@ class Game {
       .map(([type, cfg]) => ({
         cost: type === 'barrel'
           ? Math.round(cfg.cost * this.getBarrelDiscountMultiplier())
-          : cfg.cost,
+          : Math.round(cfg.cost * this.getTowerDiscountMultiplier(type)),
         icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
         iconOffsetY: cfg.shopIconOffsetY || 0,
         action: () => this.confirmPurchase(slot, type),
@@ -2399,9 +2615,7 @@ class Game {
         getCost: () => {
           const base = tower.getUpgradeCost();
           if (base == null) return null;
-          return tower.type === 'barrel'
-            ? Math.round(base * this.getBarrelDiscountMultiplier())
-            : base;
+          return Math.round(base * this.getTowerDiscountMultiplier(tower.type));
         },
         icon: this.getTowerUpgradeIcon(tower),
         action: () => this.upgradeTower(tower),

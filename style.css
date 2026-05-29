@@ -248,14 +248,14 @@ body {
   min-height: 76px;
   padding: 10px;
   color: #000;
-  background: rgba(5, 13, 35, 0.72);
-  border: 2px solid rgba(89, 191, 255, 0.72);
+  background: rgba(246, 251, 255, 0.96);
+  border: 2px solid rgba(58, 103, 132, 0.72);
 }
 
 .shop-tree-branch {
   padding: 8px 8px 10px;
   border: 2px solid rgba(0, 0, 0, 0.2);
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .shop-tree-row {
