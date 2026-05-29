@@ -946,7 +946,6 @@ class Tower {
   static RANGE_UPGRADE_COSTS = [80, 160, 320];
   static MAX_BARREL_MINES = 30;
   static BARREL_MINE_CELL_OFFSET = TILE_SIZE * 0.28;
-  static RANGE_UPGRADE_MULTIPLIER = 1.2;
   static CANNON_BERSERK_CYCLE_COOLDOWN = 7;
   static CANNON_BERSERK_BASE_DURATION = 7;
 
@@ -976,9 +975,6 @@ class Tower {
 
   getRange() {
     let range = this.config.range;
-    if (this.type !== 'barrel') {
-      range *= Math.pow(Tower.RANGE_UPGRADE_MULTIPLIER, this.level - 1);
-    }
     if (this.type === 'cannon' && this.isBerserkActive) {
       range *= 2;
     }
@@ -1186,10 +1182,7 @@ class Tower {
   }
 
   isEnemyInBaseRange() {
-    let baseRange = this.config.range;
-    if (this.type !== 'barrel') {
-      baseRange *= Math.pow(Tower.RANGE_UPGRADE_MULTIPLIER, this.level - 1);
-    }
+    const baseRange = this.config.range;
 
     for (const enemy of this.game.enemies) {
       if (!enemy.alive) continue;
