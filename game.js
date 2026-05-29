@@ -398,6 +398,8 @@ const ASSET_KEYS = [
   'barrelRust_top',
   'barrelGreen_top',
   'barrelGreen_side',
+  'treeGreen_large',
+  'tracksSmall',
   'shotOrange',
   'shotRed',
   'explosionSmoke1',
@@ -891,6 +893,22 @@ class Enemy {
     const img = images[ENEMY_TYPES[this.type].sprite];
     const w = img.width * ASSET_SCALE;
     const h = img.height * ASSET_SCALE;
+    const facingAngle = this.angle + TANK_SPRITE_FACING;
+
+    if (this.alive && this.boostTimer > 0 && images.tracksSmall) {
+      const t = performance.now() * 0.02;
+      const alpha = 0.18 + 0.2 * Math.abs(Math.sin(t));
+      const trackImg = images.tracksSmall;
+      const tw = trackImg.width * ASSET_SCALE * 1.25;
+      const th = trackImg.height * ASSET_SCALE * 1.25;
+      const backOffset = h * 0.36;
+      const tx = this.x - Math.cos(facingAngle) * backOffset;
+      const ty = this.y - Math.sin(facingAngle) * backOffset;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      drawRotatedSprite(ctx, trackImg, tx, ty, tw, th, this.angle);
+      ctx.restore();
+    }
 
     if (this.alive && (this.type === 'sand' || this.type === 'green')) {
       const isGreenAura = this.type === 'green';
@@ -914,6 +932,16 @@ class Enemy {
       ctx.strokeStyle = `rgba(46, 204, 113, ${0.95 * alpha})`;
       ctx.lineWidth = 2;
       ctx.stroke();
+
+      if (images.treeGreen_large) {
+        const pulse = 0.82 + 0.18 * Math.abs(Math.sin(performance.now() * 0.018));
+        const tw = images.treeGreen_large.width * ASSET_SCALE * 0.7;
+        const th = images.treeGreen_large.height * ASSET_SCALE * 0.7;
+        ctx.save();
+        ctx.globalAlpha = 0.18 + 0.24 * alpha * pulse;
+        ctx.drawImage(images.treeGreen_large, this.x - tw / 2, this.y - h * 0.95 - th / 2, tw, th);
+        ctx.restore();
+      }
     }
 
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
