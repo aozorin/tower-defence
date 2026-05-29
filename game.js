@@ -386,15 +386,27 @@ const ASSET_KEYS = [
   'bulletBlue1_outline',
   'bulletBlue2_outline',
   'bulletBlue3_outline',
+  'bulletBlue1',
+  'bulletBlue2',
+  'bulletBlue3',
   'bulletDark1_outline',
   'bulletDark2_outline',
   'bulletDark3_outline',
+  'bulletDark1',
+  'bulletDark2',
+  'bulletDark3',
   'bulletGreen1_outline',
   'bulletGreen2_outline',
   'bulletGreen3_outline',
+  'bulletGreen1',
+  'bulletGreen2',
+  'bulletGreen3',
   'bulletSand1_outline',
   'bulletSand2_outline',
   'bulletSand3_outline',
+  'bulletSand1',
+  'bulletSand2',
+  'bulletSand3',
   'barrelRust_top',
   'barrelGreen_top',
   'barrelGreen_side',
@@ -1033,6 +1045,12 @@ class Projectile {
     this.hitEnemyIds = new Set();
   }
 
+  getRicochetBulletKey() {
+    if (!this.bulletKey.endsWith('_outline')) return this.bulletKey;
+    const candidate = this.bulletKey.replace('_outline', '');
+    return this.game.images[candidate] ? candidate : this.bulletKey;
+  }
+
   applyEffects(enemy) {
     if (!enemy?.alive) return;
     if (this.effects.poisonDps > 0 && this.effects.poisonDuration > 0) {
@@ -1085,6 +1103,7 @@ class Projectile {
           if (nextTarget) {
             this.target = nextTarget;
             this.damage = Math.max(1, Math.round(this.damage * this.ricochetDamageMult));
+            this.bulletKey = this.getRicochetBulletKey();
             this.ricochetLeft--;
             return;
           }
