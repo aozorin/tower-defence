@@ -208,6 +208,9 @@ const PROGRESSION_DEFAULTS = {
   metaBerserkLevel: 0,
   speedLevel: 0,
   startWaveLevel: 0,
+  speedPinned: false,
+  speedPinnedValue: 1,
+  lifeBountyLevel: 0,
   cannonTree: {
     cooldownLevel: 0,
     damageLevel: 0,
@@ -257,6 +260,7 @@ const EFFECT_COSTS = {
 const META_BERSERK_COSTS = [180, 320, 520, 820, 1200];
 const SPEED_LEVEL_COSTS = [120, 220, 360, 560, 840];
 const START_WAVE_COSTS = [120, 220, 380, 650, 1100];
+const LIFE_BOUNTY_COSTS = [160, 280, 420, 680, 980];
 const TANK_TREE_COSTS = {
   cooldown: [120, 220, 340, 500, 720],
   damage: [130, 240, 370, 540, 780],
@@ -631,7 +635,8 @@ class Enemy {
     const speedMultiplier = game.getEnemySpeedMultiplier?.() ?? 1;
     this.baseSpeed = cfg.speed * speedMultiplier;
     this.speed = this.baseSpeed;
-    this.goldReward = Math.round(cfg.gold * Enemy.GOLD_REWARD_MULTIPLIER);
+    const waveGoldScale = 1 + Math.max(0, wave - 1) * 0.18 + Math.max(0, wave - 1) ** 2 * 0.02;
+    this.goldReward = Math.round(cfg.gold * Enemy.GOLD_REWARD_MULTIPLIER * waveGoldScale);
     this.waypointIndex = 0;
     this.progress = pathOffset;
     let hp = getEnemyBaseHp(type, wave);
@@ -742,6 +747,7 @@ class Enemy {
     this.alive = false;
     this.game.spawnExplosion(this.x, this.y);
     this.game.gold += this.goldReward;
+    this.game.addRunGoldEarned(this.goldReward);
     this.game.registerKill(this);
     this.game.updateHud();
   }
@@ -783,6 +789,11 @@ class Enemy {
       this.reachedEnd = true;
       this.alive = false;
       this.game.lives--;
+      const bounty = this.game.getLifeLossBounty?.() ?? 0;
+      if (bounty > 0) {
+        this.game.gold += bounty;
+        this.game.addRunGoldEarned(bounty);
+      }
       this.game.updateHud();
       return;
     }
@@ -1619,6 +1630,7 @@ class Game {
     this.runKills = 0;
     this.runWaveClears = 0;
     this.runTokenReward = 0;
+    this.runGoldEarned = 0;
     this.gold = this.getStartingGold();
     this.lives = this.getStartingLives();
     this.wave = 1;
@@ -1657,6 +1669,7 @@ class Game {
     this.radialMenu = document.getElementById('radial-menu');
     this.pauseBtn = document.getElementById('pause-btn');
     this.speedBtn = document.getElementById('speed-btn');
+    this.speedLockBtn = document.getElementById('speed-lock-btn');
     this.progressSummaryEl = document.getElementById('progress-summary');
     this.shopProgressSummaryEl = document.getElementById('shop-progress-summary');
     this.shopTabsEl = document.getElementById('shop-tabs');
@@ -1674,6 +1687,7 @@ class Game {
     });
     this.pauseBtn.addEventListener('click', () => this.togglePause());
     this.speedBtn.addEventListener('click', () => this.cycleGameSpeed());
+    this.speedLockBtn.addEventListener('click', () => this.toggleSpeedLock());
     document.getElementById('start-btn').addEventListener('click', () => this.startGame());
     document.getElementById('open-shop-btn').addEventListener('click', () => this.openShopMenu());
     document.getElementById('shop-back-btn').addEventListener('click', () => this.openMainMenu());
@@ -1727,6 +1741,16 @@ class Game {
 
   getProgressPower() {
     return getProgressPower(this.progress);
+  }
+
+  addRunGoldEarned(amount) {
+    this.runGoldEarned += Math.max(0, amount || 0);
+  }
+
+  getLifeLossBounty() {
+    const lvl = this.progress.lifeBountyLevel || 0;
+    if (lvl <= 0) return 0;
+    return Math.round((24 + this.wave * 8) * (1 + lvl * 0.75));
   }
 
   getStartingGold() {
@@ -1866,6 +1890,7 @@ class Game {
     this.startWaveLabelEl.textContent = `Волна ${this.progress.selectedStartWave}`;
     this.speedBtn.textContent = `x${this.gameSpeed}`;
     this.speedBtn.disabled = getMaxGameSpeed(this.progress) <= 1;
+    this.speedLockBtn.textContent = this.progress.speedPinned ? 'PIN' : 'AUTO';
     this.renderShopTabs();
     this.renderProgressShop();
     this.syncStartPreviewStats();
@@ -1906,6 +1931,19 @@ class Game {
     const available = GAME_SPEED_OPTIONS.filter((speed) => speed <= maxSpeed);
     const currentIndex = available.indexOf(this.gameSpeed);
     this.gameSpeed = available[(currentIndex + 1) % available.length] || 1;
+    if (this.progress.speedPinned) {
+      this.progress.speedPinnedValue = this.gameSpeed;
+      this.saveProgress();
+    }
+    this.updateProgressUi();
+  }
+
+  toggleSpeedLock() {
+    this.progress.speedPinned = !this.progress.speedPinned;
+    if (this.progress.speedPinned) {
+      this.progress.speedPinnedValue = this.gameSpeed;
+    }
+    this.saveProgress();
     this.updateProgressUi();
   }
 
@@ -2043,6 +2081,18 @@ class Game {
           },
           this.progress.startWaveLevel < lvl - 1,
           'Старт с волны'
+        );
+      }
+      for (let lvl = 1; lvl <= LIFE_BOUNTY_COSTS.length; lvl++) {
+        add(
+          `meta-life-bounty-${lvl}`,
+          `Кэшбэк жизни ${lvl}/${LIFE_BOUNTY_COSTS.length}`,
+          `золото за потерю жизни: уровень ${lvl}`,
+          LIFE_BOUNTY_COSTS[lvl - 1],
+          (this.progress.lifeBountyLevel || 0) >= lvl,
+          () => { this.progress.lifeBountyLevel = lvl; },
+          (this.progress.lifeBountyLevel || 0) < lvl - 1,
+          'Кэшбэк'
         );
       }
       return items;
@@ -2669,12 +2719,12 @@ class Game {
 
   calculateTokenReward() {
     const wavesPlayed = Math.max(0, this.highestWaveThisRun - this.runStartWave + 1);
-    const baseWaveReward = this.runWaveClears * 9;
-    const waveDepthBonus = Math.round(Math.max(0, wavesPlayed - 1) * 2.5);
-    const killReward = this.runKills;
-    const milestoneBonus = Math.round(Math.max(0, this.highestWaveThisRun - this.progress.bestWave) * 12);
-    const activityFloor = this.runKills > 0 || this.runWaveClears > 0 ? 6 : 0;
-    return Math.max(0, activityFloor + baseWaveReward + waveDepthBonus + killReward + milestoneBonus);
+    const waveReward = this.runWaveClears * 60 + Math.round(wavesPlayed ** 1.7 * 45);
+    const killReward = this.runKills * 5;
+    const goldReward = Math.round(this.runGoldEarned * 0.35);
+    const milestoneBonus = Math.round(Math.max(0, this.highestWaveThisRun - this.progress.bestWave) * 220);
+    const activityFloor = this.runKills > 0 || this.runWaveClears > 0 ? 20 : 0;
+    return Math.max(0, activityFloor + waveReward + killReward + goldReward + milestoneBonus);
   }
 
   getTowerSellRefund(tower) {
@@ -2725,7 +2775,7 @@ class Game {
       if (option.iconOffsetY) {
         btn.style.setProperty('--icon-offset-y', `${option.iconOffsetY}px`);
       }
-      const affordable = this.gold >= cost;
+      const affordable = option.skipAffordabilityCheck ? true : this.gold >= cost;
       if (!affordable) btn.classList.add('disabled');
       let dx = 0;
       let dy = -30;
@@ -3020,6 +3070,12 @@ class Game {
     this.runKills = 0;
     this.runWaveClears = 0;
     this.runTokenReward = 0;
+    this.runGoldEarned = 0;
+    const maxSpeed = getMaxGameSpeed(this.progress);
+    if (this.progress.speedPinned) {
+      const pinned = this.progress.speedPinnedValue || 1;
+      this.gameSpeed = GAME_SPEED_OPTIONS.includes(pinned) ? Math.min(pinned, maxSpeed) : 1;
+    }
     this.updateHud();
     this.started = true;
     this.mainMenu.classList.add('hidden');

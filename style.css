@@ -81,6 +81,12 @@ body {
   margin-left: 0;
 }
 
+.hud-speed-lock {
+  margin-left: 0;
+  width: 62px;
+  font-size: 12px;
+}
+
 #game {
   display: block;
   width: 100vw;
