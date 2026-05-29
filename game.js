@@ -657,7 +657,7 @@ class Enemy {
     const speedMultiplier = game.getEnemySpeedMultiplier?.() ?? 1;
     this.baseSpeed = cfg.speed * speedMultiplier;
     this.speed = this.baseSpeed;
-    const waveGoldScale = 1 + Math.max(0, wave - 1) * 0.18 + Math.max(0, wave - 1) ** 2 * 0.02;
+    const waveGoldScale = Math.min(3.2, 1 + Math.max(0, wave - 1) * 0.06);
     this.goldReward = Math.round(cfg.gold * Enemy.GOLD_REWARD_MULTIPLIER * waveGoldScale);
     this.waypointIndex = 0;
     this.progress = pathOffset;
