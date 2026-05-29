@@ -17,6 +17,8 @@ body {
   background: #090b1f;
   font-family: 'Pixelify Sans', system-ui, sans-serif;
   color: #000;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #game-root {

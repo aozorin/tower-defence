@@ -1272,12 +1272,15 @@ class Tower {
         this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
         const lvl = this.barrelBerserkLevels.sniper || 1;
         const splash = lvl >= 4 ? 34 : 0;
+        const hpScalePercent = 0.03 + lvl * 0.01;
+        const hpScaleDamage = Math.min(9500, Math.round(target.maxHp * hpScalePercent));
+        const totalDamage = this.getDamage() + hpScaleDamage;
         this.game.projectiles.push(
           new Projectile(
             this.x,
             this.y,
             target,
-            this.getDamage(),
+            totalDamage,
             this.game,
             lvl >= 3 ? 'shotRed' : 'shotOrange',
             620 + lvl * 40,
@@ -1565,6 +1568,10 @@ class Game {
     this.activeShopTab = 'core';
 
     this.canvas.addEventListener('click', (e) => this.onCanvasClick(e));
+    this.canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (this.started && !this.gameOver) this.togglePause();
+    });
     this.pauseBtn.addEventListener('click', () => this.togglePause());
     this.speedBtn.addEventListener('click', () => this.cycleGameSpeed());
     document.getElementById('start-btn').addEventListener('click', () => this.startGame());
