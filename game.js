@@ -904,10 +904,10 @@ class Enemy {
 
     if (this.alive && this.boostTimer > 0 && images.tracksSmall) {
       const t = performance.now() * 0.02;
-      const alpha = 0.18 + 0.2 * Math.abs(Math.sin(t));
+      const alpha = 0.34 + 0.28 * Math.abs(Math.sin(t));
       const trackImg = images.tracksSmall;
-      const tw = trackImg.width * ASSET_SCALE * 1.25;
-      const th = trackImg.height * ASSET_SCALE * 1.25;
+      const tw = trackImg.width * ASSET_SCALE * 1.38;
+      const th = trackImg.height * ASSET_SCALE * 1.38;
       const backOffset = h * 0.36;
       const tx = this.x - Math.cos(facingAngle) * backOffset;
       const ty = this.y - Math.sin(facingAngle) * backOffset;
@@ -915,6 +915,24 @@ class Enemy {
       ctx.globalAlpha = alpha;
       drawRotatedSprite(ctx, trackImg, tx, ty, tw, th, this.angle);
       ctx.restore();
+
+      // Speed particles: small dust bits behind tracks while accelerated.
+      const pxBase = tx - Math.cos(facingAngle) * (tw * 0.24);
+      const pyBase = ty - Math.sin(facingAngle) * (th * 0.24);
+      for (let i = 0; i < 4; i++) {
+        const p = performance.now() * 0.004 + i * 1.7;
+        const side = i % 2 === 0 ? 1 : -1;
+        const offsetBack = 8 + (p * 9) % 18;
+        const lateral = side * (4 + Math.sin(p * 1.9) * 3);
+        const px = pxBase - Math.cos(facingAngle) * offsetBack + Math.cos(facingAngle + Math.PI / 2) * lateral;
+        const py = pyBase - Math.sin(facingAngle) * offsetBack + Math.sin(facingAngle + Math.PI / 2) * lateral;
+        const r = 1.3 + (i % 3) * 0.55;
+        const pa = 0.16 + 0.12 * Math.abs(Math.sin(p * 2.1));
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(195, 174, 124, ${pa})`;
+        ctx.fill();
+      }
     }
 
     if (this.alive && (this.type === 'sand' || this.type === 'green')) {
@@ -941,24 +959,27 @@ class Enemy {
       ctx.stroke();
 
       if (images.treeGreen_large) {
-        const pulse = 0.82 + 0.18 * Math.abs(Math.sin(performance.now() * 0.018));
-        const tw = images.treeGreen_large.width * ASSET_SCALE * 0.6;
-        const th = images.treeGreen_large.height * ASSET_SCALE * 0.6;
+        const pulse = 0.72 + 0.38 * Math.abs(Math.sin(performance.now() * 0.02));
+        const tw = images.treeGreen_large.width * ASSET_SCALE * 0.54 * pulse;
+        const th = images.treeGreen_large.height * ASSET_SCALE * 0.54 * pulse;
         ctx.save();
-        ctx.globalAlpha = 0.18 + 0.24 * alpha * pulse;
+        ctx.globalAlpha = 0.2 + 0.32 * alpha * pulse;
         ctx.drawImage(images.treeGreen_large, this.x - tw / 2, this.y - th / 2, tw, th);
         ctx.restore();
       }
     }
 
-    if (this.alive && (this.slowTimer > 0 || this.slowStackCount > 0) && images.oilSpill_small) {
+    if (this.alive && (this.slowTimer > 0 || this.slowStackCount > 0) && (images.oilSpill_small || images.oilSpill_large)) {
       const baseAlpha = this.slowTimer > 0 ? 0.28 : 0.18;
       const pulse = 0.85 + 0.15 * Math.abs(Math.sin(performance.now() * 0.014));
-      const sw = images.oilSpill_small.width * ASSET_SCALE * 0.72;
-      const sh = images.oilSpill_small.height * ASSET_SCALE * 0.72;
+      const useLarge = this.slowStackCount >= 3 && images.oilSpill_large;
+      const oilImg = useLarge ? images.oilSpill_large : images.oilSpill_small;
+      const scale = useLarge ? 0.5 : 0.72;
+      const sw = oilImg.width * ASSET_SCALE * scale;
+      const sh = oilImg.height * ASSET_SCALE * scale;
       ctx.save();
-      ctx.globalAlpha = baseAlpha * pulse;
-      ctx.drawImage(images.oilSpill_small, this.x - sw / 2, this.y - sh / 2, sw, sh);
+      ctx.globalAlpha = (useLarge ? 0.24 : baseAlpha) * pulse;
+      ctx.drawImage(oilImg, this.x - sw / 2, this.y - sh / 2, sw, sh);
       ctx.restore();
     }
 
