@@ -1572,7 +1572,11 @@ class Tower {
     if (barrelImg) {
       const bw = barrelImg.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
       const bh = barrelImg.height * ASSET_SCALE * (isDartType ? 1.15 : 1);
-      drawRotatedSprite(ctx, barrelImg, this.x, this.y, bw, bh, this.angle);
+      const forwardAngle = this.angle + TANK_SPRITE_FACING;
+      const barrelForwardOffset = bh * 0.5;
+      const barrelX = this.x + Math.cos(forwardAngle) * barrelForwardOffset;
+      const barrelY = this.y + Math.sin(forwardAngle) * barrelForwardOffset;
+      drawRotatedSprite(ctx, barrelImg, barrelX, barrelY, bw, bh, this.angle);
     }
     this.drawHudBars(ctx);
   }
@@ -2746,7 +2750,8 @@ class Game {
         dx = start + idx * gap;
       }
       btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%)`;
-      btn.innerHTML = `<img src="${option.icon}" alt=""><span class="cost">${option.costPrefix || ''}${cost}${option.costSuffix || ''}</span>`;
+      const iconSrc = typeof option.getIcon === 'function' ? option.getIcon() : option.icon;
+      btn.innerHTML = `<img src="${iconSrc}" alt=""><span class="cost">${option.costPrefix || ''}${cost}${option.costSuffix || ''}</span>`;
       btn.addEventListener('click', () => {
         const currentCost = typeof option.getCost === 'function' ? option.getCost() : option.cost;
         if (currentCost == null && !option.allowNullCost) {
@@ -2903,13 +2908,14 @@ class Game {
         });
       }
     }
-    const sellConfirm = this.pendingSellTowerId === tower.id;
     options.push({
       getCost: () => this.getTowerSellRefund(tower),
       costPrefix: '+',
-      icon: sellConfirm
-        ? 'assets/kenney_game-icons/PNG/White/2x/checkmark.png'
-        : 'assets/kenney_game-icons/PNG/White/2x/trashcan.png',
+      getIcon: () => (
+        this.pendingSellTowerId === tower.id
+          ? 'assets/kenney_game-icons/PNG/White/2x/checkmark.png'
+          : 'assets/kenney_game-icons/PNG/White/2x/trashcan.png'
+      ),
       skipAffordabilityCheck: true,
       position: 'below',
       action: () => {
