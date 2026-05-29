@@ -400,6 +400,8 @@ const ASSET_KEYS = [
   'barrelGreen_side',
   'treeGreen_large',
   'tracksSmall',
+  'barricadeMetal',
+  'oilSpill_small',
   'shotOrange',
   'shotRed',
   'explosionSmoke1',
@@ -670,6 +672,8 @@ class Enemy {
     this.slowStackTimer = 0;
     this.boostMultiplier = 1;
     this.boostTimer = 0;
+    this.sniperMarkTimer = 0;
+    this.sniperMarkMax = 0;
 
     this.path = path;
     const start = cellCenter(this.path[0].col, this.path[0].row);
@@ -791,6 +795,9 @@ class Enemy {
 
     if (this.healFlashTimer > 0) {
       this.healFlashTimer = Math.max(0, this.healFlashTimer - dt);
+    }
+    if (this.sniperMarkTimer > 0) {
+      this.sniperMarkTimer = Math.max(0, this.sniperMarkTimer - dt);
     }
 
     if (this.waypointIndex >= this.path.length - 1) {
@@ -944,6 +951,30 @@ class Enemy {
       }
     }
 
+    if (this.alive && (this.slowTimer > 0 || this.slowStackCount > 0) && images.oilSpill_small) {
+      const baseAlpha = this.slowTimer > 0 ? 0.28 : 0.18;
+      const pulse = 0.85 + 0.15 * Math.abs(Math.sin(performance.now() * 0.014));
+      const sw = images.oilSpill_small.width * ASSET_SCALE * 0.86;
+      const sh = images.oilSpill_small.height * ASSET_SCALE * 0.86;
+      ctx.save();
+      ctx.globalAlpha = baseAlpha * pulse;
+      ctx.drawImage(images.oilSpill_small, this.x - sw / 2, this.y - h * 0.98 - sh / 2, sw, sh);
+      ctx.restore();
+    }
+
+    if (this.alive && this.sniperMarkTimer > 0 && images.barricadeMetal) {
+      const progress = this.sniperMarkMax > 0
+        ? 1 - this.sniperMarkTimer / this.sniperMarkMax
+        : 1;
+      const scale = 0.3 + Math.min(1, progress) * 0.7;
+      const mw = images.barricadeMetal.width * ASSET_SCALE * scale;
+      const mh = images.barricadeMetal.height * ASSET_SCALE * scale;
+      ctx.save();
+      ctx.globalAlpha = 0.18 + progress * 0.22;
+      ctx.drawImage(images.barricadeMetal, this.x - mw / 2, this.y - mh / 2, mw, mh);
+      ctx.restore();
+    }
+
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.angle);
 
     if (this.alive && this.hp < this.maxHp) {
@@ -1013,6 +1044,7 @@ class Projectile {
     const dist = Math.hypot(dx, dy);
 
     if (dist < Projectile.HIT_RADIUS) {
+      if (this.target?.sniperMarkTimer > 0) this.target.sniperMarkTimer = 0;
       if (this.target?.id != null) this.hitEnemyIds.add(this.target.id);
       if (this.splashRadius > 0) {
         this.game.spawnBarrelExplosion(this.x, this.y);
@@ -1112,6 +1144,8 @@ class Tower {
     this.barrelBerserkMode = null;
     this.barrelBerserkLevels = { sniper: 0, deployer: 0, booster: 0 };
     this.spentGold = 0;
+    this.sniperChargeTimer = 0;
+    this.sniperChargeTarget = null;
   }
 
   getRange() {
@@ -1363,6 +1397,17 @@ class Tower {
   }
 
   update(dt) {
+    if (this.type === 'barrel' && this.barrelBerserkMode === 'sniper' && this.sniperChargeTimer > 0) {
+      this.sniperChargeTimer = Math.max(0, this.sniperChargeTimer - dt);
+      if (this.sniperChargeTimer <= 0) {
+        const target = this.sniperChargeTarget?.alive ? this.sniperChargeTarget : this.findStrongestTarget();
+        this.sniperChargeTarget = null;
+        if (target) {
+          this.fireSniperShot(target);
+        }
+      }
+      return;
+    }
     if (this.type === 'barrel' && this.barrelBerserkMode === 'booster' && this.barrelBerserkLevels.booster > 0) {
       this.cooldown = 0;
       return;
@@ -1422,30 +1467,10 @@ class Tower {
       if (this.barrelBerserkMode === 'sniper') {
         if (!target) return;
         this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
-        const lvl = this.barrelBerserkLevels.sniper || 1;
-        const splash = lvl >= 4 ? 34 : 0;
-        const fixedBonus = Tower.BARREL_SNIPER_FIXED_BONUS[lvl] ?? Tower.BARREL_SNIPER_FIXED_BONUS[1];
-        const bossHpPercent = Math.min(
-          Tower.BARREL_SNIPER_BOSS_HP_PERCENT_CAP,
-          Tower.BARREL_SNIPER_BOSS_HP_PERCENT[lvl] ?? Tower.BARREL_SNIPER_BOSS_HP_PERCENT[1]
-        );
-        const bossHp = this.game.getBossReferenceMaxHp?.() ?? target.maxHp;
-        const hpScaleDamage = Math.round(bossHp * bossHpPercent);
-        const totalDamage = this.getDamage() + fixedBonus + hpScaleDamage;
-        this.game.projectiles.push(
-          new Projectile(
-            this.x,
-            this.y,
-            target,
-            totalDamage,
-            this.game,
-            lvl >= 3 ? 'shotRed' : 'shotOrange',
-            620 + lvl * 40,
-            splash,
-            this.getShotEffects()
-          )
-        );
-        this.cooldown = cooldown;
+        this.sniperChargeTarget = target;
+        this.sniperChargeTimer = 0.26;
+        target.sniperMarkMax = this.sniperChargeTimer;
+        target.sniperMarkTimer = this.sniperChargeTimer;
         return;
       }
 
@@ -1590,6 +1615,34 @@ class Tower {
       x: center.x + (Math.random() * 2 - 1) * offset,
       y: center.y + (Math.random() * 2 - 1) * offset,
     };
+  }
+
+  fireSniperShot(target) {
+    this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
+    const lvl = this.barrelBerserkLevels.sniper || 1;
+    const splash = lvl >= 4 ? 34 : 0;
+    const fixedBonus = Tower.BARREL_SNIPER_FIXED_BONUS[lvl] ?? Tower.BARREL_SNIPER_FIXED_BONUS[1];
+    const bossHpPercent = Math.min(
+      Tower.BARREL_SNIPER_BOSS_HP_PERCENT_CAP,
+      Tower.BARREL_SNIPER_BOSS_HP_PERCENT[lvl] ?? Tower.BARREL_SNIPER_BOSS_HP_PERCENT[1]
+    );
+    const bossHp = this.game.getBossReferenceMaxHp?.() ?? target.maxHp;
+    const hpScaleDamage = Math.round(bossHp * bossHpPercent);
+    const totalDamage = this.getDamage() + fixedBonus + hpScaleDamage;
+    this.game.projectiles.push(
+      new Projectile(
+        this.x,
+        this.y,
+        target,
+        totalDamage,
+        this.game,
+        lvl >= 3 ? 'shotRed' : 'shotOrange',
+        620 + lvl * 40,
+        splash,
+        this.getShotEffects()
+      )
+    );
+    this.cooldown = this.getFireCooldown();
   }
 
   drawStatusBar(ctx, x, y, width, height, progress, fillColor, bgColor = 'rgba(0, 0, 0, 0.55)') {
