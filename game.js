@@ -1123,6 +1123,10 @@ class Projectile {
     if (this.hit) return;
 
     if (!this.target.alive) {
+      if (this.target?.sniperMarkTimer > 0) {
+        this.target.sniperMarkTimer = 0;
+        this.target.sniperMarkMax = 0;
+      }
       this.hit = true;
       return;
     }
@@ -1557,6 +1561,10 @@ class Tower {
       if (this.barrelBerserkMode === 'sniper') {
         if (!target) return;
         this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
+        if (this.sniperChargeTarget && this.sniperChargeTarget !== target) {
+          this.sniperChargeTarget.sniperMarkTimer = 0;
+          this.sniperChargeTarget.sniperMarkMax = 0;
+        }
         this.sniperChargeTarget = target;
         this.sniperChargeTimer = 0.26;
         target.sniperMarkMax = this.sniperChargeTimer;
