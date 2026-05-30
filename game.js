@@ -10,7 +10,6 @@ import { ASSET_KEYS } from './src/config/assets.js';
 import {
   TILE_SIZE,
   PATHS,
-  cellCenter,
   loadImage,
   BUILD_SLOTS,
   isBuildSlot,
@@ -46,6 +45,17 @@ import {
 import { Tower } from './src/entities/tower.js';
 import { generateDecorations } from './src/systems/decorations.js';
 import { drawMap as drawMapSystem } from './src/systems/render-map.js';
+import {
+  renderRadialMenu as renderRadialMenuSystem,
+  confirmPurchase as confirmPurchaseSystem,
+  upgradeTower as upgradeTowerSystem,
+  upgradeTowerRange as upgradeTowerRangeSystem,
+  upgradeBerserk as upgradeBerserkSystem,
+  upgradeBarrelBerserk as upgradeBarrelBerserkSystem,
+  showPurchaseRadial as showPurchaseRadialSystem,
+  showUpgradeRadial as showUpgradeRadialSystem,
+  onCanvasClick as onCanvasClickSystem,
+} from './src/systems/radial-ui.js';
 import {
   getWaveConfig as getWaveConfigSystem,
   generatePathSpawnPlan as generatePathSpawnPlanSystem,
@@ -1001,6 +1011,10 @@ export class Game {
     return this.towers.some((t) => t.col === col && t.row === row);
   }
 
+  createTower(col, row, towerType) {
+    return new Tower(col, row, this, towerType);
+  }
+
   getTowerAt(x, y) {
     for (const tower of this.towers) {
       if (tower.containsPoint(x, y)) return tower;
@@ -1086,117 +1100,19 @@ export class Game {
   }
 
   renderRadialMenu() {
-    if (!this.currentRadial) return;
-    this.radialMenu.innerHTML = '';
-    const { x, y, options, layout } = this.currentRadial;
-    const gameX = x / this.canvas.width;
-    let dir = 0;
-    if (gameX < 0.24) dir = 1;
-    if (gameX > 0.76) dir = -1;
-    this.radialMenu.style.left = `${(x / this.canvas.width) * 100}%`;
-    this.radialMenu.style.top = `${(y / this.canvas.height) * 100}%`;
-
-    options.forEach((option, idx) => {
-      const cost = typeof option.getCost === 'function' ? option.getCost() : option.cost;
-      if (cost == null) return;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'radial-option';
-      if (option.iconOffsetY) {
-        btn.style.setProperty('--icon-offset-y', `${option.iconOffsetY}px`);
-      }
-      const affordable = option.skipAffordabilityCheck ? true : this.gold >= cost;
-      if (!affordable) btn.classList.add('disabled');
-      let dx = 0;
-      let dy = -30;
-      if (layout === 'upgrade') {
-        if (option.position === 'below') {
-          dx = 0;
-          dy = 54;
-        } else {
-          const topOptions = options.filter((entry) => entry.position !== 'below');
-          const topIndex = topOptions.indexOf(option);
-          const cols = Math.min(3, Math.max(1, topOptions.length));
-          const row = Math.floor(topIndex / cols);
-          const col = topIndex % cols;
-          const xStart = -((cols - 1) * 68) / 2;
-          dx = xStart + col * 68;
-          dy = -26 + row * 60;
-        }
-      } else {
-        const gap = 74;
-        const total = options.length;
-        const start = -((total - 1) * gap) / 2;
-        dx = start + idx * gap;
-      }
-      btn.style.transform = `translate(${dx}px, ${dy}px) translate(-50%, -50%)`;
-      const iconSrc = typeof option.getIcon === 'function' ? option.getIcon() : option.icon;
-      btn.innerHTML = `<img src="${iconSrc}" alt=""><span class="cost">${option.costPrefix || ''}${cost}${option.costSuffix || ''}</span>`;
-      btn.addEventListener('click', () => {
-        const currentCost = typeof option.getCost === 'function' ? option.getCost() : option.cost;
-        if (currentCost == null && !option.allowNullCost) {
-          this.showHint('Максимальная прокачка');
-          this.closeRadialMenu();
-          return;
-        }
-        if (!option.skipAffordabilityCheck && this.gold < currentCost) {
-          this.showHint('Нужно больше золота');
-          return;
-        }
-        option.action();
-      });
-      this.radialMenu.appendChild(btn);
-    });
-    this.radialMenu.classList.remove('hidden');
+    renderRadialMenuSystem(this);
   }
 
   confirmPurchase(slot, towerType) {
-    if (this.gameOver) return;
-    const { col, row } = slot;
-    const cfg = TOWER_TYPES[towerType];
-
-    if (!cfg || !isBuildSlot(col, row) || this.hasTowerAt(col, row)) {
-      this.closeRadialMenu();
-      return;
-    }
-
-    const buyCost = Math.round(cfg.cost * this.getTowerDiscountMultiplier(towerType));
-    const finalBuyCost = this.scaleTowerPurchaseCost(towerType, buyCost);
-    if (this.gold < finalBuyCost) {
-      this.showHint('Недостаточно золота');
-      return;
-    }
-
-    this.gold -= finalBuyCost;
-    const tower = new Tower(col, row, this, towerType);
-    tower.spentGold = finalBuyCost;
-    this.towers.push(tower);
-    this.updateHud();
-    this.closeRadialMenu();
+    confirmPurchaseSystem(this, slot, towerType);
   }
 
   upgradeTower(tower) {
-    if (!tower.canUpgrade()) return;
-    const baseCost = tower.getUpgradeCost();
-    const cost = this.scaleGoldCost(Math.round(baseCost * this.getTowerDiscountMultiplier(tower.type)));
-    if (this.gold < cost) return;
-    this.gold -= cost;
-    tower.upgrade();
-    tower.spentGold += cost;
-    this.updateHud();
-    this.renderRadialMenu();
+    upgradeTowerSystem(this, tower);
   }
 
   upgradeTowerRange(tower) {
-    if (!tower.canUpgradeRange()) return;
-    const baseCost = tower.getRangeUpgradeCost();
-    const cost = this.scaleGoldCost(Math.round(baseCost * this.getTowerDiscountMultiplier(tower.type)));
-    if (this.gold < cost) return;
-    this.gold -= cost;
-    tower.upgradeRange();
-    tower.spentGold += cost;
-    this.updateHud();
-    this.renderRadialMenu();
+    upgradeTowerRangeSystem(this, tower);
   }
 
   getTowerUpgradeIcon(tower) {
@@ -1208,133 +1124,23 @@ export class Game {
   }
 
   upgradeBerserk(tower) {
-    if (!tower.canUpgradeBerserk()) return;
-    const cost = this.scaleGoldCost(tower.getBerserkUpgradeCost());
-    if (this.gold < cost) return;
-    this.gold -= cost;
-    tower.upgradeBerserk();
-    tower.spentGold += cost;
-    this.updateHud();
-    this.renderRadialMenu();
+    upgradeBerserkSystem(this, tower);
   }
 
   upgradeBarrelBerserk(tower, mode) {
-    const cost = this.scaleGoldCost(tower.getBarrelBerserkCost(mode));
-    if (cost == null || this.gold < cost) return;
-    this.gold -= cost;
-    tower.upgradeBarrelBerserk(mode);
-    tower.spentGold += cost;
-    this.updateHud();
-    this.renderRadialMenu();
+    upgradeBarrelBerserkSystem(this, tower, mode);
   }
 
   showPurchaseRadial(slot) {
-    const center = cellCenter(slot.col, slot.row);
-    const options = Object.entries(TOWER_TYPES)
-      .filter(([type]) => this.isTowerUnlocked(type))
-      .map(([type, cfg]) => ({
-        cost: type === 'barrel'
-          ? this.scaleTowerPurchaseCost(type, Math.round(cfg.cost * this.getBarrelDiscountMultiplier()))
-          : this.scaleTowerPurchaseCost(type, Math.round(cfg.cost * this.getTowerDiscountMultiplier(type))),
-        icon: `${ASSET_BASE}${cfg.shopSprite}.png`,
-        iconOffsetY: cfg.shopIconOffsetY || 0,
-        action: () => this.confirmPurchase(slot, type),
-      }));
-    this.openRadialMenu(center.x, center.y, options, 'purchase');
+    showPurchaseRadialSystem(this, slot);
   }
 
   showUpgradeRadial(tower) {
-    const options = [];
-    if (tower.canUpgrade()) {
-      options.push({
-        getCost: () => {
-          const base = tower.getUpgradeCost();
-          if (base == null) return null;
-          return this.scaleGoldCost(Math.round(base * this.getTowerDiscountMultiplier(tower.type)));
-        },
-        icon: this.getTowerUpgradeIcon(tower),
-        action: () => this.upgradeTower(tower),
-      });
-    }
-    if (tower.canUpgradeRange()) {
-      options.push({
-        getCost: () => {
-          const base = tower.getRangeUpgradeCost();
-          if (base == null) return null;
-          return this.scaleGoldCost(Math.round(base * this.getTowerDiscountMultiplier(tower.type)));
-        },
-        icon: this.getTowerRangeUpgradeIcon(),
-        action: () => this.upgradeTowerRange(tower),
-      });
-    }
-    if (tower.canUpgradeBerserk()) {
-      options.push({
-        getCost: () => this.scaleGoldCost(tower.getBerserkUpgradeCost()),
-        icon: 'assets/kenney_ranks-pack/PNG/Retina/Gold/rank001.png',
-        action: () => this.upgradeBerserk(tower),
-      });
-    }
-    if (tower.type === 'barrel' && tower.level >= 3) {
-      const barrelModes = [
-        { mode: 'sniper', icon: 'assets/kenney_game-icons/PNG/White/2x/target.png' },
-        { mode: 'deployer', icon: 'assets/kenney_game-icons/PNG/White/2x/warning.png' },
-        { mode: 'booster', icon: 'assets/kenney_game-icons/PNG/White/2x/power.png' },
-      ];
-      for (const entry of barrelModes) {
-        if (!tower.canUpgradeBarrelBerserk(entry.mode)) continue;
-        options.push({
-          getCost: () => this.scaleGoldCost(tower.getBarrelBerserkCost(entry.mode)),
-          icon: entry.icon,
-          action: () => this.upgradeBarrelBerserk(tower, entry.mode),
-        });
-      }
-    }
-    options.push({
-      getCost: () => this.getTowerSellRefund(tower),
-      costPrefix: '+',
-      getIcon: () => (
-        this.pendingSellTowerId === tower.id
-          ? 'assets/kenney_game-icons/PNG/White/2x/checkmark.png'
-          : 'assets/kenney_game-icons/PNG/White/2x/trashcan.png'
-      ),
-      skipAffordabilityCheck: true,
-      position: 'below',
-      action: () => {
-        if (this.pendingSellTowerId !== tower.id) {
-          this.pendingSellTowerId = tower.id;
-          this.renderRadialMenu();
-          return;
-        }
-        this.sellTower(tower);
-      },
-    });
-    if (options.length === 0) {
-      this.showHint('Максимальная прокачка');
-      this.closeRadialMenu();
-      return;
-    }
-    this.openRadialMenu(tower.x, tower.y, options, 'upgrade');
+    showUpgradeRadialSystem(this, tower);
   }
 
   onCanvasClick(e) {
-    if (this.gameOver || this.isPaused || !this.started) return;
-
-    const { x, y } = this.canvasToGameCoords(e.clientX, e.clientY);
-    const tower = this.getTowerAt(x, y);
-
-    if (tower) {
-      this.selectTower(tower);
-      this.showUpgradeRadial(tower);
-      return;
-    }
-
-    this.deselectTower();
-    this.closeRadialMenu();
-
-    const slot = this.getPlusAt(x, y);
-    if (slot) {
-      this.showPurchaseRadial(slot);
-    }
+    onCanvasClickSystem(this, e);
   }
 
   drawBuildSlots() {
