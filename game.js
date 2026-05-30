@@ -148,7 +148,7 @@ const TOWER_TYPES = {
     shopIconOffsetY: -4,
     bodySprite: 'tankBody_green_outline',
     barrels: { 1: 'tankGreen_barrel2_outline', 2: 'tankGreen_barrel3_outline', 3: 'tankGreen_barrel1_outline' },
-    range: 300,
+    range: 150,
     fireCooldown: { 1: 3, 2: 2.5, 3: 2 },
     projectileSpeed: 200,
     splashRadius: { 1: 50, 2: 65, 3: 85 },
@@ -615,6 +615,53 @@ class BarrelMine {
     const img = images[this.spriteKey] || images.barrelGreen_side;
     const w = img.width * ASSET_SCALE * 1.25;
     const h = img.height * ASSET_SCALE * 1.25;
+    drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.rotation);
+  }
+}
+
+class BarrelMineFlight {
+  static MIN_DURATION = 0.12;
+  static ARC_HEIGHT = TILE_SIZE * 0.72;
+
+  constructor(x, y, mine, speed) {
+    this.startX = x;
+    this.startY = y;
+    this.x = x;
+    this.y = y;
+    this.mine = mine;
+    this.duration = Math.max(
+      BarrelMineFlight.MIN_DURATION,
+      Math.hypot(mine.x - x, mine.y - y) / speed
+    );
+    this.elapsed = 0;
+    this.rotation = mine.rotation;
+    this.finished = false;
+  }
+
+  update(dt, game) {
+    if (this.finished) return;
+
+    this.elapsed += dt;
+    const progress = Math.min(1, this.elapsed / this.duration);
+    this.x = this.startX + (this.mine.x - this.startX) * progress;
+    this.y = this.startY + (this.mine.y - this.startY) * progress
+      - Math.sin(progress * Math.PI) * BarrelMineFlight.ARC_HEIGHT;
+    this.rotation += dt * 10;
+
+    if (progress >= 1) {
+      this.finished = true;
+      if (!this.mine.spent) game.mines.push(this.mine);
+    }
+  }
+
+  draw(ctx, images) {
+    if (this.finished || this.mine.spent) return;
+
+    const img = images[this.mine.spriteKey] || images.barrelGreen_side;
+    const progress = Math.min(1, this.elapsed / this.duration);
+    const scale = 1.05 + Math.sin(progress * Math.PI) * 0.38;
+    const w = img.width * ASSET_SCALE * scale;
+    const h = img.height * ASSET_SCALE * scale;
     drawRotatedSprite(ctx, img, this.x, this.y, w, h, this.rotation);
   }
 }
@@ -1156,6 +1203,7 @@ class Tower {
   static RANGE_UPGRADE_COSTS = [80, 160, 320];
   static MAX_BARREL_MINES = 30;
   static BARREL_MINE_CELL_OFFSET = TILE_SIZE * 0.28;
+  static BARREL_MINE_FLIGHT_SPEED = 520;
   static CANNON_BERSERK_CYCLE_COOLDOWN = 7;
   static CANNON_BERSERK_BASE_DURATION = 7;
   static BARREL_SNIPER_FIXED_BONUS = { 1: 1300, 2: 2200, 3: 3400, 4: 5000, 5: 7200 };
@@ -1516,9 +1564,7 @@ class Tower {
         return;
       }
 
-      const activeMinesByThisTower = this.game.mines.filter(
-        (mine) => !mine.spent && mine.ownerTower === this
-      );
+      const activeMinesByThisTower = this.getActiveBarrelMines();
       const mineLimit = this.game.getBarrelMineLimit?.() ?? Tower.MAX_BARREL_MINES;
       if (activeMinesByThisTower.length >= mineLimit) {
         const mineToReplace = activeMinesByThisTower[
@@ -1528,7 +1574,7 @@ class Tower {
       }
 
       const occupiedCells = new Set(
-        this.game.mines
+        activeMinesByThisTower
           .filter((mine) => (
             !mine.spent &&
             mine.ownerTower === this &&
@@ -1540,32 +1586,10 @@ class Tower {
       const point = this.getRandomRoadCellInRange(occupiedCells);
       if (point) {
         const spot = this.getRandomMineSpot(point);
-        this.game.mines.push(
-          new BarrelMine(
-            spot.x,
-            spot.y,
-            this.getDamage(),
-            this.getSplashRadius(),
-            this,
-            this.getProjectileKey(),
-            point.col,
-            point.row
-          )
-        );
+        this.launchBarrelMine(spot, point);
         if (this.barrelBerserkMode === 'deployer' && this.barrelBerserkLevels.deployer >= 2) {
           const extra = this.getRandomMineSpot(point);
-          this.game.mines.push(
-            new BarrelMine(
-              extra.x,
-              extra.y,
-              Math.round(this.getDamage() * 0.8),
-              this.getSplashRadius(),
-              this,
-              this.getProjectileKey(),
-              point.col,
-              point.row
-            )
-          );
+          this.launchBarrelMine(extra, point, 0.8);
         }
       }
       this.cooldown = cooldown;
@@ -1659,6 +1683,29 @@ class Tower {
     };
   }
 
+  getActiveBarrelMines() {
+    const flyingMines = this.game.mineFlights.map((flight) => flight.mine);
+    return [...this.game.mines, ...flyingMines].filter(
+      (mine) => !mine.spent && mine.ownerTower === this
+    );
+  }
+
+  launchBarrelMine(spot, point, damageMultiplier = 1) {
+    const mine = new BarrelMine(
+      spot.x,
+      spot.y,
+      Math.round(this.getDamage() * damageMultiplier),
+      this.getSplashRadius(),
+      this,
+      this.getProjectileKey(),
+      point.col,
+      point.row
+    );
+    this.game.mineFlights.push(
+      new BarrelMineFlight(this.x, this.y, mine, Tower.BARREL_MINE_FLIGHT_SPEED)
+    );
+  }
+
   fireSniperShot(target) {
     this.angle = angleFromDirection(target.x - this.x, target.y - this.y);
     const lvl = this.barrelBerserkLevels.sniper || 1;
@@ -1734,7 +1781,10 @@ class Tower {
   draw(ctx, images) {
     const spriteKey = this.getBodySpriteKey();
     const baseImg = images[spriteKey];
-    const barrelKey = this.getBarrelSpriteKey();
+    const usesMineLauncher = this.type === 'barrel'
+      && this.barrelBerserkMode !== 'sniper'
+      && this.barrelBerserkMode !== 'booster';
+    const barrelKey = usesMineLauncher ? null : this.getBarrelSpriteKey();
     const barrelImg = barrelKey ? images[barrelKey] : null;
     const isDartType = this.type === 'dart';
     const w = baseImg.width * ASSET_SCALE * (isDartType ? 1.15 : 1);
@@ -1748,6 +1798,15 @@ class Tower {
       const barrelX = this.x + Math.cos(forwardAngle) * barrelForwardOffset;
       const barrelY = this.y + Math.sin(forwardAngle) * barrelForwardOffset;
       drawRotatedSprite(ctx, barrelImg, barrelX, barrelY, bw, bh, this.angle);
+    }
+    if (usesMineLauncher) {
+      const mineImg = images[this.getProjectileKey()];
+      const cooldownBase = Math.max(0.001, this.getFireCooldown());
+      const chargeProgress = Math.max(0.01, Math.min(1, 1 - this.cooldown / cooldownBase));
+      const mineScale = 1.25 * chargeProgress;
+      const mw = mineImg.width * ASSET_SCALE * mineScale;
+      const mh = mineImg.height * ASSET_SCALE * mineScale;
+      drawRotatedSprite(ctx, mineImg, this.x, this.y, mw, mh, this.angle);
     }
     this.drawHudBars(ctx);
   }
@@ -1781,6 +1840,7 @@ class Game {
     this.towers = [];
     this.projectiles = [];
     this.mines = [];
+    this.mineFlights = [];
     this.explosions = [];
 
     this.progress = loadProgress();
@@ -3370,6 +3430,10 @@ class Game {
       projectile.update(dt);
     }
 
+    for (const mineFlight of this.mineFlights) {
+      mineFlight.update(dt, this);
+    }
+
     for (const mine of this.mines) {
       mine.update(dt, this);
     }
@@ -3380,6 +3444,7 @@ class Game {
 
     this.enemies = this.enemies.filter((e) => e.alive);
     this.projectiles = this.projectiles.filter((p) => !p.hit);
+    this.mineFlights = this.mineFlights.filter((f) => !f.finished);
     this.mines = this.mines.filter((m) => !m.spent);
     this.explosions = this.explosions.filter((e) => !e.finished);
   }
@@ -3481,6 +3546,10 @@ class Game {
 
     for (const mine of this.mines) {
       mine.draw(ctx, images);
+    }
+
+    for (const mineFlight of this.mineFlights) {
+      mineFlight.draw(ctx, images);
     }
 
     for (const projectile of this.projectiles) {
