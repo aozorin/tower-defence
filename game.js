@@ -1054,7 +1054,7 @@ class Enemy {
       const mw = images.barricadeMetal.width * ASSET_SCALE * scale;
       const mh = images.barricadeMetal.height * ASSET_SCALE * scale;
       ctx.save();
-      ctx.globalAlpha = 0.18 + progress * 0.22;
+      ctx.globalAlpha = 1;
       ctx.drawImage(images.barricadeMetal, this.x - mw / 2, this.y - mh / 2, mw, mh);
       ctx.restore();
     }
