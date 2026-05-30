@@ -6,247 +6,59 @@ import {
   RANK_ASSETS,
   DECORATION_ASSETS,
 } from './src/config/game-content.js';
+import {
+  GRID_COLS,
+  GRID_ROWS,
+  TILE_SIZE,
+  ASSET_SCALE,
+  TANK_SPRITE_FACING,
+  BULLET_FRONT_FLIP,
+  PATHS,
+  BASE_COL,
+  BASE_ROW,
+  MAIN_BASE_JUNCTION,
+  RIGHT_BASE_JUNCTION,
+  cellCenter,
+  isBaseCell,
+  angleFromDirection,
+  drawRotatedSprite,
+  loadImage,
+  ROAD_CELLS,
+  BUILD_SLOTS,
+  isRoad,
+  isBuildSlot,
+  getGrassTransitionKey,
+} from './src/core/world.js';
+import {
+  PROGRESSION_STORAGE_KEY,
+  START_WAVE_OPTIONS,
+  GAME_SPEED_OPTIONS,
+  STAT_MAX_LEVELS,
+  STAT_COSTS,
+  TOWER_UNLOCK_COSTS,
+  TOWER_LEVEL_COSTS,
+  EFFECT_COSTS,
+  META_BERSERK_COSTS,
+  SPEED_LEVEL_COSTS,
+  START_WAVE_COSTS,
+  LIFE_BOUNTY_COSTS,
+  KILL_BOUNTY_COSTS,
+  TANK_TREE_COSTS,
+  DART_TREE_COSTS,
+  BARREL_TREE_COSTS,
+  loadProgress,
+  saveProgress,
+  formatPercentChange,
+  getMaxStartWave,
+  getMaxGameSpeed,
+  getProgressPower,
+} from './src/config/progression.js';
 
-const GRID_COLS = 22;
-const GRID_ROWS = 14;
-const TILE_SIZE = 48;
 const GOLD_UPGRADE_COST_MULTIPLIER = 2.6;
 const CANNON_PURCHASE_COST_MULTIPLIER = 1.8;
-const ASSET_SCALE = TILE_SIZE / 128;
-const TANK_SPRITE_FACING = Math.PI / 2;
-const BULLET_FRONT_FLIP = Math.PI;
-
-const PATHS = [
-  [
-    { col: 0, row: 8 },
-    { col: 7, row: 8 },
-    { col: 7, row: 4 },
-    { col: 3, row: 4 },
-    { col: 3, row: 10 },
-    { col: 11, row: 10 },
-    { col: 11, row: 13 },
-  ],
-  [
-    { col: 11, row: 0 },
-    { col: 11, row: 3 },
-    { col: 9, row: 3 },
-    { col: 9, row: 7 },
-    { col: 13, row: 7 },
-    { col: 13, row: 10 },
-    { col: 11, row: 10 },
-    { col: 11, row: 13 },
-  ],
-  [
-    { col: 21, row: 8 },
-    { col: 16, row: 8 },
-    { col: 16, row: 5 },
-    { col: 19, row: 5 },
-    { col: 19, row: 10 },
-    { col: 11, row: 10 },
-    { col: 11, row: 13 },
-  ],
-];
-
-const BASE_COL = 11;
-const BASE_ROW = 13;
-const MAIN_BASE_JUNCTION = { col: 11, row: 10, tile: 'tileSand_roadSplitS' };
-const RIGHT_BASE_JUNCTION = { col: 13, row: 10, tile: 'tileSand_roadSplitN' };
-
-function cellCenter(col, row) {
-  return {
-    x: col * TILE_SIZE + TILE_SIZE / 2,
-    y: row * TILE_SIZE + TILE_SIZE / 2,
-  };
-}
-
-function isBaseCell(col, row) {
-  return col === BASE_COL && row === BASE_ROW;
-}
-
-function angleFromDirection(dx, dy) {
-  return Math.atan2(dy, dx) - TANK_SPRITE_FACING;
-}
-
-function drawRotatedSprite(ctx, img, x, y, w, h, angle) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.drawImage(img, -w / 2, -h / 2, w, h);
-  ctx.restore();
-}
-
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to load: ${src}`));
-    img.src = src;
-  });
-}
-
 const DECORATION_SPAWN_CHANCE = 0.24;
-const PROGRESSION_STORAGE_KEY = 'towerDefenceProgressV1';
-const START_WAVE_OPTIONS = [1, 3, 5, 10, 15, 25];
-const GAME_SPEED_OPTIONS = [1, 1.25, 1.5, 2, 2.5, 3];
-const PROGRESSION_DEFAULTS = {
-  tokens: 0,
-  bestWave: 1,
-  runs: 0,
-  selectedStartWave: 1,
-  unlockedTowers: { cannon: true, dart: false, barrel: false },
-  towerMaxLevel: { cannon: 1, dart: 1, barrel: 1 },
-  stats: { damage: 0, range: 0, economy: 0, lives: 0 },
-  effects: {
-    cannonImpact: false,
-    dartOvercharge: false,
-    barrelStockpile: false,
-    dartPoison: false,
-    dartSlow: false,
-    cannonPierce: false,
-    barrelNapalm: false,
-    barrelSnare: false,
-  },
-  berserkUnlocked: false,
-  metaBerserkLevel: 0,
-  speedLevel: 0,
-  startWaveLevel: 0,
-  speedPinned: false,
-  speedPinnedValue: 1,
-  lifeBountyLevel: 0,
-  killBountyLevel: 0,
-  cannonTree: {
-    cooldownLevel: 0,
-    damageLevel: 0,
-    rangeLevel: 0,
-    discountLevel: 0,
-    utilityLevel: 0,
-  },
-  dartTree: {
-    cooldownLevel: 0,
-    damageLevel: 0,
-    rangeLevel: 0,
-    discountLevel: 0,
-    burnLevel: 0,
-    slowStackLevel: 0,
-  },
-  barrelTree: {
-    cooldownLevel: 0,
-    damageLevel: 0,
-    discountLevel: 0,
-    utilityLevel: 0,
-    berserkUnlock: { sniper: 0, deployer: 0, booster: 0 },
-  },
-};
-const STAT_MAX_LEVELS = { damage: 5, range: 5, economy: 5, lives: 5 };
-const STAT_COSTS = {
-  damage: [40, 90, 170, 290, 450],
-  range: [35, 80, 150, 260, 410],
-  economy: [35, 75, 140, 240, 380],
-  lives: [45, 100, 190, 320, 500],
-};
-const TOWER_UNLOCK_COSTS = { dart: 70, barrel: 130 };
-const TOWER_LEVEL_COSTS = {
-  cannon: { 2: 25, 3: 70 },
-  dart: { 2: 55, 3: 100, 4: 260, 5: 520 },
-  barrel: { 2: 130, 3: 260 },
-};
-const EFFECT_COSTS = {
-  cannonImpact: 220,
-  cannonPierce: 360,
-  dartOvercharge: 220,
-  dartPoison: 340,
-  dartSlow: 520,
-  barrelStockpile: 260,
-  barrelNapalm: 360,
-  barrelSnare: 520,
-};
-const META_BERSERK_COSTS = [180, 320, 520, 820, 1200];
-const SPEED_LEVEL_COSTS = [120, 220, 360, 560, 840];
-const START_WAVE_COSTS = [120, 220, 380, 650, 1100];
-const LIFE_BOUNTY_COSTS = [160, 280, 420, 680, 980];
-const KILL_BOUNTY_COSTS = [180, 300, 480, 760, 1120];
-const TANK_TREE_COSTS = {
-  cooldown: [120, 220, 340, 500, 720],
-  damage: [130, 240, 370, 540, 780],
-  range: [110, 210, 320, 480, 700],
-  discount: [130, 240, 380, 560, 820],
-  utility: [220, 340, 520, 780, 1120],
-};
-const DART_TREE_COSTS = {
-  cooldown: [140, 250, 380, 560, 820],
-  damage: [140, 260, 400, 600, 880],
-  range: [120, 230, 350, 520, 760],
-  discount: [140, 260, 410, 620, 900],
-  burn: [220, 340, 520, 780, 1120],
-  slowStack: [220, 340, 520, 780, 1120],
-};
-const BARREL_TREE_COSTS = {
-  cooldown: [140, 240, 360, 520, 760],
-  damage: [150, 260, 390, 560, 820],
-  discount: [160, 280, 430, 620, 900],
-  utility: [220, 340, 500, 760, 1080],
-  berserkSniper: [260, 400, 600, 900, 1300],
-  berserkDeployer: [260, 400, 600, 900, 1300],
-  berserkBooster: [260, 400, 600, 900, 1300],
-};
 
-function cloneProgressDefaults() {
-  return JSON.parse(JSON.stringify(PROGRESSION_DEFAULTS));
-}
 
-function mergeProgress(saved) {
-  const progress = cloneProgressDefaults();
-  if (!saved || typeof saved !== 'object') return progress;
-  for (const [key, value] of Object.entries(saved)) {
-    if (
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      progress[key] &&
-      typeof progress[key] === 'object'
-    ) {
-      progress[key] = { ...progress[key], ...value };
-    } else if (key in progress) {
-      progress[key] = value;
-    }
-  }
-  return progress;
-}
-
-function loadProgress() {
-  try {
-    return mergeProgress(JSON.parse(localStorage.getItem(PROGRESSION_STORAGE_KEY)));
-  } catch (error) {
-    return cloneProgressDefaults();
-  }
-}
-
-function formatPercentChange(before, after) {
-  const pct = ((after / before) - 1) * 100;
-  const sign = pct >= 0 ? '+' : '';
-  return `${sign}${Math.round(pct)}%`;
-}
-
-function saveProgress(progress) {
-  localStorage.setItem(PROGRESSION_STORAGE_KEY, JSON.stringify(progress));
-}
-
-function getMaxStartWave(progress) {
-  return START_WAVE_OPTIONS[Math.min(progress.startWaveLevel, START_WAVE_OPTIONS.length - 1)];
-}
-
-function getMaxGameSpeed(progress) {
-  return GAME_SPEED_OPTIONS[Math.min(progress.speedLevel, GAME_SPEED_OPTIONS.length - 1)];
-}
-
-function getProgressPower(progress) {
-  const towerPower = Object.entries(progress.towerMaxLevel)
-    .reduce((sum, [, level]) => sum + Math.max(0, level - 1), 0);
-  const unlockPower = Object.values(progress.unlockedTowers).filter(Boolean).length - 1;
-  const statPower = Object.values(progress.stats).reduce((sum, level) => sum + level, 0);
-  const effectPower = Object.values(progress.effects).filter(Boolean).length * 2;
-  return Math.max(0, towerPower * 1.2 + unlockPower * 1.5 + statPower + effectPower);
-}
 const ASSET_KEYS = [
   'tileGrass1',
   'tileSand1',
@@ -330,60 +142,7 @@ const ASSET_KEYS = [
   'explosion5',
 ];
 
-function buildRoadCells() {
-  const set = new Set();
-  for (const path of PATHS) {
-    for (let i = 0; i < path.length - 1; i++) {
-      const a = path[i];
-      const b = path[i + 1];
-      if (a.col === b.col) {
-        const from = Math.min(a.row, b.row);
-        const to = Math.max(a.row, b.row);
-        for (let row = from; row <= to; row++) set.add(`${a.col},${row}`);
-      } else {
-        const from = Math.min(a.col, b.col);
-        const to = Math.max(a.col, b.col);
-        for (let col = from; col <= to; col++) set.add(`${col},${a.row}`);
-      }
-    }
-  }
-  set.add(`${BASE_COL},${BASE_ROW}`);
-  return set;
-}
 
-function getRoadNeighbors(col, row, roadCells) {
-  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  return dirs.filter(([dx, dy]) => roadCells.has(`${col + dx},${row + dy}`));
-}
-
-const ROAD_CELLS = buildRoadCells();
-const BUILD_SLOTS = [];
-for (let row = 1; row < GRID_ROWS - 1; row++) {
-  for (let col = 1; col < GRID_COLS - 1; col++) {
-    const key = `${col},${row}`;
-    if (ROAD_CELLS.has(key)) continue;
-    if (col === BASE_COL && row >= BASE_ROW - 1) continue;
-    if (getRoadNeighbors(col, row, ROAD_CELLS).length > 0) BUILD_SLOTS.push({ col, row });
-  }
-}
-const BUILD_SLOT_SET = new Set(BUILD_SLOTS.map((s) => `${s.col},${s.row}`));
-
-function isRoad(col, row) {
-  return ROAD_CELLS.has(`${col},${row}`);
-}
-
-function isBuildSlot(col, row) {
-  return BUILD_SLOT_SET.has(`${col},${row}`);
-}
-
-function getGrassTransitionKey(col, row) {
-  if (isRoad(col, row) || isBuildSlot(col, row)) return null;
-  if (isBuildSlot(col + 1, row)) return 'tileGrass_transitionE';
-  if (isBuildSlot(col - 1, row)) return 'tileGrass_transitionW';
-  if (isBuildSlot(col, row - 1)) return 'tileGrass_transitionN';
-  if (isBuildSlot(col, row + 1)) return 'tileGrass_transitionS';
-  return null;
-}
 
 class Explosion {
   static FRAME_DURATION = 0.08;
@@ -2610,7 +2369,7 @@ export class Game {
       for (let col = 0; col < GRID_COLS; col++) {
         const key = `${col},${row}`;
         if (isRoad(col, row)) continue;
-        if (BUILD_SLOT_SET.has(key)) continue;
+        if (isBuildSlot(col, row)) continue;
         if (isBaseCell(col, row)) continue;
         if (Math.random() > DECORATION_SPAWN_CHANCE) continue;
 
