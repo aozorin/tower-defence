@@ -735,6 +735,7 @@ class Enemy {
     this.boostTimer = 0;
     this.sniperMarkTimer = 0;
     this.sniperMarkMax = 0;
+    this.sniperMarkGrowDuration = 0;
 
     this.path = path;
     const start = cellCenter(this.path[0].col, this.path[0].row);
@@ -1047,10 +1048,12 @@ class Enemy {
     }
 
     if (this.alive && this.sniperMarkTimer > 0 && images.barricadeMetal) {
-      const progress = this.sniperMarkMax > 0
-        ? 1 - this.sniperMarkTimer / this.sniperMarkMax
-        : 1;
-      const scale = 0.3 + Math.min(1, progress) * 0.7;
+      const elapsed = this.sniperMarkMax > 0
+        ? this.sniperMarkMax - this.sniperMarkTimer
+        : 0;
+      const growDuration = Math.max(0.01, this.sniperMarkGrowDuration || this.sniperMarkMax || 0.2);
+      const growProgress = Math.max(0, Math.min(1, elapsed / growDuration));
+      const scale = 0.3 + growProgress * 0.7;
       const mw = images.barricadeMetal.width * ASSET_SCALE * scale;
       const mh = images.barricadeMetal.height * ASSET_SCALE * scale;
       ctx.save();
@@ -1126,6 +1129,7 @@ class Projectile {
       if (this.target?.sniperMarkTimer > 0) {
         this.target.sniperMarkTimer = 0;
         this.target.sniperMarkMax = 0;
+        this.target.sniperMarkGrowDuration = 0;
       }
       this.hit = true;
       return;
@@ -1136,7 +1140,11 @@ class Projectile {
     const dist = Math.hypot(dx, dy);
 
     if (dist < Projectile.HIT_RADIUS) {
-      if (this.target?.sniperMarkTimer > 0) this.target.sniperMarkTimer = 0;
+      if (this.target?.sniperMarkTimer > 0) {
+        this.target.sniperMarkTimer = 0;
+        this.target.sniperMarkMax = 0;
+        this.target.sniperMarkGrowDuration = 0;
+      }
       if (this.target?.id != null) this.hitEnemyIds.add(this.target.id);
       if (this.splashRadius > 0) {
         this.game.spawnBarrelExplosion(this.x, this.y);
@@ -1564,12 +1572,14 @@ class Tower {
         if (this.sniperChargeTarget && this.sniperChargeTarget !== target) {
           this.sniperChargeTarget.sniperMarkTimer = 0;
           this.sniperChargeTarget.sniperMarkMax = 0;
+          this.sniperChargeTarget.sniperMarkGrowDuration = 0;
         }
         this.sniperChargeTarget = target;
         // Keep mark visible for at least one rendered frame even on high game speed.
         this.sniperChargeTimer = Math.max(0.26, dt + 0.02);
         target.sniperMarkMax = this.sniperChargeTimer;
         target.sniperMarkTimer = this.sniperChargeTimer;
+        target.sniperMarkGrowDuration = this.sniperChargeTimer;
         return;
       }
 
@@ -1727,6 +1737,12 @@ class Tower {
     const bossHp = this.game.getBossReferenceMaxHp?.() ?? target.maxHp;
     const hpScaleDamage = Math.round(bossHp * bossHpPercent);
     const totalDamage = this.getDamage() + fixedBonus + hpScaleDamage;
+    const projectileSpeed = 620 + lvl * 40;
+    const distanceToTarget = Math.hypot(target.x - this.x, target.y - this.y);
+    const flightTime = Math.max(0.08, distanceToTarget / Math.max(1, projectileSpeed));
+    target.sniperMarkMax = flightTime + 0.08;
+    target.sniperMarkTimer = target.sniperMarkMax;
+    target.sniperMarkGrowDuration = Math.max(0.05, flightTime * 0.2);
     this.game.projectiles.push(
       new Projectile(
         this.x,
@@ -1735,7 +1751,7 @@ class Tower {
         totalDamage,
         this.game,
         lvl >= 3 ? 'shotRed' : 'shotOrange',
-        620 + lvl * 40,
+        projectileSpeed,
         splash,
         this.getShotEffects()
       )
