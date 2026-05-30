@@ -1566,7 +1566,8 @@ class Tower {
           this.sniperChargeTarget.sniperMarkMax = 0;
         }
         this.sniperChargeTarget = target;
-        this.sniperChargeTimer = 0.26;
+        // Keep mark visible for at least one rendered frame even on high game speed.
+        this.sniperChargeTimer = Math.max(0.26, dt + 0.02);
         target.sniperMarkMax = this.sniperChargeTimer;
         target.sniperMarkTimer = this.sniperChargeTimer;
         return;
