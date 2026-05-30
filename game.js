@@ -54,9 +54,25 @@ import {
   Explosion,
   BarrelExplosion,
 } from './src/entities/effects.js';
-import { Enemy } from './src/entities/enemy.js';
 import { Tower } from './src/entities/tower.js';
 import { generateDecorations } from './src/systems/decorations.js';
+import {
+  getWaveConfig as getWaveConfigSystem,
+  generatePathSpawnPlan as generatePathSpawnPlanSystem,
+  shufflePathIndexes as shufflePathIndexesSystem,
+  getBossLaneCount as getBossLaneCountSystem,
+  generateBossSpawnSchedule as generateBossSpawnScheduleSystem,
+  takePathForSpawn as takePathForSpawnSystem,
+  spawnRedEnemy as spawnRedEnemySystem,
+  spawnSandEnemy as spawnSandEnemySystem,
+  spawnBluePack as spawnBluePackSystem,
+  spawnGreenEnemy as spawnGreenEnemySystem,
+  spawnBoss as spawnBossSystem,
+  spawnDueBosses as spawnDueBossesSystem,
+  areBossesDone as areBossesDoneSystem,
+  spawnEnemy as spawnEnemySystem,
+  startWave as startWaveSystem,
+} from './src/systems/waves.js';
 
 const GOLD_UPGRADE_COST_MULTIPLIER = 2.6;
 const CANNON_PURCHASE_COST_MULTIPLIER = 1.8;
@@ -914,118 +930,27 @@ export class Game {
   }
 
   getWaveConfig() {
-    const difficultyPower = this.getProgressPower();
-    const enemiesPerWave = Math.round((6 + this.wave * 3) * (1 + difficultyPower * 0.01));
-    const spawnInterval = Math.max(0.55, (2.4 - this.wave * 0.18) / (1 + difficultyPower * 0.012));
-    const bluePackChance = Math.min(0.48, 0.1 + this.wave * 0.045);
-    const sandChance = this.wave >= 3 ? Math.min(0.16, 0.03 + this.wave * 0.016) : 0;
-    const greenChance = this.wave >= 5 ? Math.min(0.13, 0.01 + this.wave * 0.012) : 0;
-    return { enemiesPerWave, spawnInterval, bluePackChance, sandChance, greenChance };
+    return getWaveConfigSystem(this);
   }
 
   generatePathSpawnPlan(totalEnemies) {
-    const plan = new Array(PATHS.length).fill(0);
-    for (let i = 0; i < totalEnemies; i++) {
-      const idx = Math.floor(Math.random() * PATHS.length);
-      plan[idx]++;
-    }
-    return plan;
+    return generatePathSpawnPlanSystem(totalEnemies);
   }
 
   shufflePathIndexes() {
-    const indexes = PATHS.map((_, idx) => idx);
-    for (let i = indexes.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [indexes[i], indexes[j]] = [indexes[j], indexes[i]];
-    }
-    return indexes;
+    return shufflePathIndexesSystem();
   }
 
   getBossLaneCount() {
-    if (this.wave < 5) return 0;
-    if (this.wave < 10) return 1;
-    if (this.wave < 15) return 2;
-    return 3;
+    return getBossLaneCountSystem(this);
   }
 
   generateBossSpawnSchedule() {
-    const laneCount = this.getBossLaneCount();
-    if (laneCount === 0) return [];
-
-    const pathIndexes = this.shufflePathIndexes().slice(0, laneCount);
-    if (this.wave < 25) {
-      return pathIndexes.map((pathIndex) => ({
-        pathIndex,
-        spawnAtCount: this.enemiesPerWave,
-        spawned: false,
-      }));
-    }
-
-    const schedule = [];
-    const usedSpawnCounts = new Set();
-    const secondBossChance = this.wave >= 50 ? 0.65 : 0.35;
-    const firstBossMinProgress = this.wave >= 50 ? 0 : 0.28;
-
-    const reserveSpawnCount = (preferred) => {
-      let spawnAtCount = Math.max(0, Math.min(this.enemiesPerWave, Math.round(preferred)));
-      while (usedSpawnCounts.has(spawnAtCount) && spawnAtCount < this.enemiesPerWave) {
-        spawnAtCount++;
-      }
-      while (usedSpawnCounts.has(spawnAtCount) && spawnAtCount > 0) {
-        spawnAtCount--;
-      }
-      usedSpawnCounts.add(spawnAtCount);
-      return spawnAtCount;
-    };
-
-    pathIndexes.forEach((pathIndex, idx) => {
-      const earlyProgress = firstBossMinProgress + Math.random() * 0.35;
-      const firstPreferred = idx === 0 && this.wave >= 50
-        ? 0
-        : this.enemiesPerWave * earlyProgress;
-      schedule.push({
-        pathIndex,
-        spawnAtCount: reserveSpawnCount(firstPreferred),
-        spawned: false,
-      });
-
-      if (Math.random() < secondBossChance) {
-        const lateProgress = 0.62 + Math.random() * 0.28;
-        schedule.push({
-          pathIndex,
-          spawnAtCount: reserveSpawnCount(this.enemiesPerWave * lateProgress),
-          spawned: false,
-        });
-      }
-    });
-
-    return schedule.sort((a, b) => a.spawnAtCount - b.spawnAtCount);
+    return generateBossSpawnScheduleSystem(this);
   }
 
   takePathForSpawn(groupSize = 1) {
-    const available = this.pathSpawnRemaining
-      .map((count, idx) => ({ count, idx }))
-      .filter((entry) => entry.count > 0);
-    if (available.length === 0) {
-      return Math.floor(Math.random() * PATHS.length);
-    }
-
-    const totalWeight = available.reduce((sum, entry) => sum + entry.count, 0);
-    let roll = Math.random() * totalWeight;
-    let selectedIdx = available[0].idx;
-    for (const entry of available) {
-      roll -= entry.count;
-      if (roll <= 0) {
-        selectedIdx = entry.idx;
-        break;
-      }
-    }
-
-    this.pathSpawnRemaining[selectedIdx] = Math.max(
-      0,
-      this.pathSpawnRemaining[selectedIdx] - Math.max(1, groupSize)
-    );
-    return selectedIdx;
+    return takePathForSpawnSystem(this, groupSize);
   }
 
   getPathThreatLevel(remainingCount) {
@@ -1036,101 +961,39 @@ export class Game {
   }
 
   startWave() {
-    const config = this.getWaveConfig();
-    this.enemiesPerWave = config.enemiesPerWave;
-    this.spawnInterval = config.spawnInterval;
-    this.bluePackChance = config.bluePackChance;
-    this.sandChance = config.sandChance;
-    this.greenChance = config.greenChance;
-    this.waveActive = true;
-    this.enemiesSpawned = 0;
-    this.spawnTimer = 0;
-    this.pathSpawnPlan = this.generatePathSpawnPlan(this.enemiesPerWave);
-    this.pathSpawnRemaining = [...this.pathSpawnPlan];
-    this.pathFirstSpawned = new Array(PATHS.length).fill(false);
-    this.pathIndicatorMinTimer = new Array(PATHS.length).fill(5);
-    this.bossSpawnSchedule = this.generateBossSpawnSchedule();
-    this.showWaveBanner(`В0ЛНА ${this.wave}`);
-    this.spawnDueBosses();
+    startWaveSystem(this);
   }
 
   spawnRedEnemy() {
-    const pathIndex = this.takePathForSpawn(1);
-    const path = PATHS[pathIndex];
-    this.enemies.push(new Enemy(this, 'red', path, 0, this.wave));
-    this.pathFirstSpawned[pathIndex] = true;
-    this.enemiesSpawned++;
+    spawnRedEnemySystem(this);
   }
 
   spawnSandEnemy() {
-    const pathIndex = this.takePathForSpawn(1);
-    const path = PATHS[pathIndex];
-    this.enemies.push(new Enemy(this, 'sand', path, 0, this.wave));
-    this.pathFirstSpawned[pathIndex] = true;
-    this.enemiesSpawned++;
+    spawnSandEnemySystem(this);
   }
 
   spawnBluePack() {
-    const remaining = this.enemiesPerWave - this.enemiesSpawned;
-    let count = 2 + Math.floor(Math.random() * 9);
-    count = Math.min(count, remaining);
-    if (count < 2) {
-      this.spawnRedEnemy();
-      return;
-    }
-
-    const pathIndex = this.takePathForSpawn(count);
-    const path = PATHS[pathIndex];
-    for (let i = 0; i < count; i++) {
-      this.enemies.push(new Enemy(this, 'blue', path, -i * 0.07, this.wave));
-    }
-    this.pathFirstSpawned[pathIndex] = true;
-    this.enemiesSpawned += count;
+    spawnBluePackSystem(this);
   }
 
   spawnGreenEnemy() {
-    const pathIndex = this.takePathForSpawn(1);
-    const path = PATHS[pathIndex];
-    this.enemies.push(new Enemy(this, 'green', path, 0, this.wave));
-    this.pathFirstSpawned[pathIndex] = true;
-    this.enemiesSpawned++;
+    spawnGreenEnemySystem(this);
   }
 
   spawnBoss(pathIndex = Math.floor(Math.random() * PATHS.length)) {
-    const path = PATHS[pathIndex];
-    this.enemies.push(new Enemy(this, 'dark', path, 0, this.wave));
-    this.pathFirstSpawned[pathIndex] = true;
+    spawnBossSystem(this, pathIndex);
   }
 
   spawnDueBosses() {
-    if (this.wave < 5) return;
-    const due = this.bossSpawnSchedule.filter((entry) => (
-      !entry.spawned && this.enemiesSpawned >= entry.spawnAtCount
-    ));
-    if (due.length === 0) return;
-
-    const entriesToSpawn = this.wave < 25 ? due : [due[0]];
-    for (const entry of entriesToSpawn) {
-      this.spawnBoss(entry.pathIndex);
-      entry.spawned = true;
-    }
+    spawnDueBossesSystem(this);
   }
 
   areBossesDone() {
-    return this.wave < 5 || this.bossSpawnSchedule.every((entry) => entry.spawned);
+    return areBossesDoneSystem(this);
   }
 
   spawnEnemy() {
-    const roll = Math.random();
-    if (this.wave >= 4 && roll < this.greenChance) {
-      this.spawnGreenEnemy();
-    } else if (this.wave >= 3 && roll < this.greenChance + this.sandChance) {
-      this.spawnSandEnemy();
-    } else if (roll < this.greenChance + this.sandChance + this.bluePackChance) {
-      this.spawnBluePack();
-    } else {
-      this.spawnRedEnemy();
-    }
+    spawnEnemySystem(this);
   }
 
   spawnExplosion(x, y) {
