@@ -6,6 +6,7 @@ import {
   RANK_ASSETS,
   DECORATION_ASSETS,
 } from './src/config/game-content.js';
+import { ASSET_KEYS } from './src/config/assets.js';
 import {
   GRID_COLS,
   GRID_ROWS,
@@ -55,92 +56,10 @@ import {
 } from './src/entities/effects.js';
 import { Enemy } from './src/entities/enemy.js';
 import { Tower } from './src/entities/tower.js';
+import { generateDecorations } from './src/systems/decorations.js';
 
 const GOLD_UPGRADE_COST_MULTIPLIER = 2.6;
 const CANNON_PURCHASE_COST_MULTIPLIER = 1.8;
-const DECORATION_SPAWN_CHANCE = 0.24;
-const ASSET_KEYS = [
-  'tileGrass1',
-  'tileSand1',
-  'tileSand2',
-  'tileGrass_transitionE',
-  'tileGrass_transitionN',
-  'tileGrass_transitionS',
-  'tileGrass_transitionW',
-  'tileSand_roadEast',
-  'tileSand_roadNorth',
-  'tileSand_roadCrossing',
-  'tileSand_roadSplitN',
-  'tileSand_roadSplitS',
-  'tileSand_roadCornerUL',
-  'tileSand_roadCornerUR',
-  'tileSand_roadCornerLL',
-  'tileSand_roadCornerLR',
-  'tank_red',
-  'tank_blue',
-  'tank_dark',
-  'tank_sand',
-  'tank_green',
-  'tankBody_blue_outline',
-  'tankBody_dark_outline',
-  'tankBody_green_outline',
-  'tankBody_sand_outline',
-  'tankBlue_barrel1_outline',
-  'tankBlue_barrel2_outline',
-  'tankBlue_barrel3_outline',
-  'tankDark_barrel1_outline',
-  'tankDark_barrel2_outline',
-  'tankDark_barrel3_outline',
-  'tankGreen_barrel1_outline',
-  'tankGreen_barrel2_outline',
-  'tankGreen_barrel3_outline',
-  'tankSand_barrel1_outline',
-  'tankSand_barrel2_outline',
-  'tankSand_barrel3_outline',
-  'bulletBlue1_outline',
-  'bulletBlue2_outline',
-  'bulletBlue3_outline',
-  'bulletBlue1',
-  'bulletBlue2',
-  'bulletBlue3',
-  'bulletDark1_outline',
-  'bulletDark2_outline',
-  'bulletDark3_outline',
-  'bulletDark1',
-  'bulletDark2',
-  'bulletDark3',
-  'bulletGreen1_outline',
-  'bulletGreen2_outline',
-  'bulletGreen3_outline',
-  'bulletGreen1',
-  'bulletGreen2',
-  'bulletGreen3',
-  'bulletSand1_outline',
-  'bulletSand2_outline',
-  'bulletSand3_outline',
-  'bulletSand1',
-  'bulletSand2',
-  'bulletSand3',
-  'barrelRust_top',
-  'barrelGreen_top',
-  'barrelGreen_side',
-  'treeGreen_large',
-  'tracksSmall',
-  'barricadeMetal',
-  'oilSpill_small',
-  'shotOrange',
-  'shotRed',
-  'explosionSmoke1',
-  'explosionSmoke2',
-  'explosionSmoke3',
-  'explosionSmoke4',
-  'explosionSmoke5',
-  'explosion1',
-  'explosion2',
-  'explosion3',
-  'explosion4',
-  'explosion5',
-];
 
 export class Game {
   constructor(canvasId) {
@@ -991,25 +910,7 @@ export class Game {
   }
 
   generateDecorations() {
-    this.decorations = [];
-    if (this.availableDecorationKeys.length === 0) return;
-
-    for (let row = 0; row < GRID_ROWS; row++) {
-      for (let col = 0; col < GRID_COLS; col++) {
-        const key = `${col},${row}`;
-        if (isRoad(col, row)) continue;
-        if (isBuildSlot(col, row)) continue;
-        if (isBaseCell(col, row)) continue;
-        if (Math.random() > DECORATION_SPAWN_CHANCE) continue;
-
-        const decorationKey = this.availableDecorationKeys[
-          Math.floor(Math.random() * this.availableDecorationKeys.length)
-        ];
-        const rotation = (Math.random() - 0.5) * 0.3;
-        const scale = 0.72 + Math.random() * 0.36;
-        this.decorations.push({ col, row, decorationKey, rotation, scale });
-      }
-    }
+    this.decorations = generateDecorations(this.availableDecorationKeys);
   }
 
   getWaveConfig() {
